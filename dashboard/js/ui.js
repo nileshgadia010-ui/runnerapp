@@ -65,5 +65,34 @@ const UI = (function () {
     setTimeout(() => URL.revokeObjectURL(url), 2000);
   }
 
-  return { openDrawer, closeDrawer, clockChip, tatCell, dutyChip, priorityChip, empty, emptyRow, csv };
+  // Full-size photo viewer. Used for meter shots and handover proof - both are things
+  // somebody reads against a number on the same screen, so opening a new tab loses the
+  // context they are checking. Click anywhere or press Escape to close.
+  function photo(url, caption) {
+    let host = document.getElementById('photoView');
+    if (!host) {
+      host = document.createElement('div');
+      host.id = 'photoView';
+      host.className = 'photoview';
+      document.body.appendChild(host);
+      host.addEventListener('click', closePhoto);
+      document.addEventListener('keydown', e => { if (e.key === 'Escape') closePhoto(); });
+    }
+    host.innerHTML =
+      '<figure class="photoview__box">' +
+      '<img src="' + url + '" alt="' + (caption || 'photo') + '" ' +
+      'onerror="this.parentNode.querySelector(\'.photoview__gone\').hidden = false; this.hidden = true;">' +
+      '<div class="photoview__gone" hidden>This photo is no longer on the server.</div>' +
+      (caption ? '<figcaption>' + caption + '</figcaption>' : '') +
+      '<a class="photoview__open" href="' + url + '" target="_blank" onclick="event.stopPropagation()">Open in a new tab</a>' +
+      '</figure>';
+    host.classList.add('is-open');
+  }
+
+  function closePhoto() {
+    const host = document.getElementById('photoView');
+    if (host) host.classList.remove('is-open');
+  }
+
+  return { openDrawer, closeDrawer, clockChip, tatCell, dutyChip, priorityChip, empty, emptyRow, csv, photo, closePhoto };
 })();

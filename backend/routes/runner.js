@@ -1,11 +1,11 @@
 const router = require('express').Router();
 const path = require('path');
-const fs = require('fs');
 const multer = require('multer');
 const Trip = require('../models/Trip');
 const User = require('../models/User');
 const Attendance = require('../models/Attendance');
 const LocationPing = require('../models/LocationPing');
+const Photo = require('../models/Photo');
 const SLA = require('../config/sla');
 const { auth, allow } = require('../middleware/auth');
 const { tripTat } = require('../services/tat');
@@ -13,30 +13,37 @@ const { roadKm, etaMinutes, kmFromPings } = require('../services/geo');
 const { applyStage, labelFor, ISTDate } = require('../services/dispatch');
 const realtime = require('../services/realtime');
 
-// UPLOAD_DIR lets a host mount a persistent disk (e.g. Render disk at /var/data/uploads).
-// If that path is not writable - disk not mounted yet, wrong permissions - fall back to the
-// local folder instead of crashing the whole server over a photo directory.
-const localUploads = path.join(__dirname, '..', 'uploads');
-function resolveUploadDir() {
-  const wanted = process.env.UPLOAD_DIR || localUploads;
-  try {
-    if (!fs.existsSync(wanted)) fs.mkdirSync(wanted, { recursive: true });
-    fs.accessSync(wanted, fs.constants.W_OK);
-    return wanted;
-  } catch (e) {
-    console.warn('[uploads] cannot use ' + wanted + ' (' + e.code + '), falling back to ' + localUploads);
-    if (!fs.existsSync(localUploads)) fs.mkdirSync(localUploads, { recursive: true });
-    return localUploads;
-  }
-}
-const uploadDir = resolveUploadDir();
+// Photos are held in memory just long enough to be written into MongoDB. Nothing touches
+// the container filesystem, because that filesystem is wiped on every deploy - see
+// models/Photo.js for why this matters more than it sounds.
 const upload = multer({
-  storage: multer.diskStorage({
-    destination: (req, file, cb) => cb(null, uploadDir),
-    filename: (req, file, cb) => cb(null, Date.now() + '-' + Math.round(Math.random() * 1e5) + path.extname(file.originalname || '.jpg'))
-  }),
+  storage: multer.memoryStorage(),
   limits: { fileSize: 8 * 1024 * 1024 }
 });
+
+// Saves an uploaded file and returns the URL the dashboard should use, or undefined when
+// there was no file. A failure here never takes down the stage change that carried it -
+// losing the photo is bad, losing the delivery record would be worse.
+async function storePhoto(file, meta) {
+  if (!file || !file.buffer || !file.buffer.length) return undefined;
+  try {
+    const doc = await Photo.create({
+      data: file.buffer,
+      contentType: file.mimetype || 'image/jpeg',
+      bytes: file.size || file.buffer.length,
+      kind: meta.kind || 'OTHER',
+      runner: meta.runner,
+      trip: meta.trip || null,
+      lat: meta.lat ? Number(meta.lat) : undefined,
+      lng: meta.lng ? Number(meta.lng) : undefined,
+      at: new Date()
+    });
+    return '/uploads/' + doc._id;
+  } catch (e) {
+    console.error('[photo] could not be stored:', e.message);
+    return undefined;
+  }
+}
 
 router.use(auth, allow('runner', 'admin'));
 
@@ -332,12 +339,16 @@ async function doStage(user, tripId, body) {
 // TAT report stays honest.
 router.post('/trip/:id/stage', upload.single('photo'), async (req, res, next) => {
   try {
+    const proofPhoto = await storePhoto(req.file, {
+      kind: 'PROOF', runner: req.user._id, trip: req.params.id,
+      lat: req.body.lat, lng: req.body.lng
+    });
     const result = await doStage(req.user, req.params.id, {
       stage: req.body.stage,
       lat: req.body.lat, lng: req.body.lng, note: req.body.note,
       barcode: req.body.barcode, units: req.body.units,
       at: req.body.at,
-      proofPhoto: req.file ? '/uploads/' + req.file.filename : undefined
+      proofPhoto
     });
     if (result.error) return res.status(result.code || 400).json({ error: result.error });
     res.json(result.trip);
@@ -431,20 +442,24 @@ async function setBreak(user, on) {
 }
 
 router.post('/punch-in', upload.single('photo'), async (req, res) => {
+  const odoPhoto = await storePhoto(req.file, {
+    kind: 'ODO_IN', runner: req.user._id, lat: req.body.lat, lng: req.body.lng
+  });
   const r = await punchIn(req.user, {
     lat: req.body.lat, lng: req.body.lng, address: req.body.address,
-    odo: req.body.odo, at: req.body.at,
-    odoPhoto: req.file ? '/uploads/' + req.file.filename : undefined
+    odo: req.body.odo, at: req.body.at, odoPhoto
   });
   if (r.error) return res.status(400).json({ error: r.error });
   res.json(Object.assign({ message: 'Punch in done' }, r));
 });
 
 router.post('/punch-out', upload.single('photo'), async (req, res) => {
+  const odoPhoto = await storePhoto(req.file, {
+    kind: 'ODO_OUT', runner: req.user._id, lat: req.body.lat, lng: req.body.lng
+  });
   const r = await punchOut(req.user, {
     lat: req.body.lat, lng: req.body.lng, address: req.body.address,
-    odo: req.body.odo, at: req.body.at,
-    odoPhoto: req.file ? '/uploads/' + req.file.filename : undefined
+    odo: req.body.odo, at: req.body.at, odoPhoto
   });
   if (r.error) return res.status(400).json({ error: r.error });
   res.json(Object.assign({ message: 'Punch out done' }, r));

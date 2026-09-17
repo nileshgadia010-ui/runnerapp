@@ -30,7 +30,7 @@ const Masters = (function () {
       '<td><b>' + F.esc(u.name) + '</b><div style="font-size:11px;color:var(--muted)">' + F.esc(u.username) + '</div></td>' +
       '<td>' + F.esc(u.empCode || '-') + '</td>' +
       '<td>' + F.esc(u.phone || '-') + '</td>' +
-      '<td>' + F.esc(u.vehicleNo || '-') + '</td>' +
+      '<td>' + F.esc(u.vehicleNo || '-') + '<div style="font-size:11px;color:var(--muted)">' + shiftText(u) + '</div></td>' +
       '<td><span class="chip">' + F.esc(u.role) + '</span></td>' +
       '<td>' + (u.role === 'runner' ? UI.dutyChip(u.dutyState) : '-') + (u.active ? '' : ' <span class="chip chip--red">switched off</span>') + '</td>' +
       '<td>' + (u.lastSeenAt ? F.ago(u.lastSeenAt) : '-') + '</td>' +
@@ -39,6 +39,14 @@ const Masters = (function () {
 
     host.querySelectorAll('[data-edit]').forEach(b =>
       b.addEventListener('click', () => staffForm(staff.find(s => String(s.id) === b.dataset.edit))));
+  }
+
+  // "09:00 - 18:00 - off Sun" in one short line, or a dash when nothing is set.
+  function shiftText(u) {
+    if (!u.shiftStart && !u.shiftEnd && !u.weekOff) return '-';
+    const hours = u.shiftStart && u.shiftEnd ? u.shiftStart + ' - ' + u.shiftEnd : (u.shiftStart || u.shiftEnd || '');
+    const off = u.weekOff ? (hours ? ' &middot; off ' : 'off ') + F.esc(u.weekOff.slice(0, 3)) : '';
+    return hours + off;
   }
 
   function staffForm(u) {
@@ -54,6 +62,13 @@ const Masters = (function () {
       '<div class="grid-2">' +
       '<div class="field"><label>Phone</label><input id="sPhone" value="' + v('phone') + '"></div>' +
       '<div class="field"><label>Vehicle number</label><input id="sVehicle" value="' + v('vehicleNo') + '"></div></div>' +
+      '<div class="grid-2">' +
+      '<div class="field"><label>Shift starts</label><input id="sShiftStart" type="time" value="' + v('shiftStart') + '"></div>' +
+      '<div class="field"><label>Shift ends</label><input id="sShiftEnd" type="time" value="' + v('shiftEnd') + '"></div></div>' +
+      '<div class="field"><label>Weekly off</label><select id="sWeekOff">' +
+      ['', 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Rotational', 'None']
+        .map(d => '<option value="' + d + '" ' + (u && u.weekOff === d ? 'selected' : '') + '>' + (d || '--') + '</option>').join('') +
+      '</select></div>' +
       '<div class="grid-2">' +
       '<div class="field"><label>Role</label><select id="sRole">' +
       ['runner', 'coordinator', 'admin'].map(r => '<option value="' + r + '" ' + (u && u.role === r ? 'selected' : '') + '>' + r + '</option>').join('') +
@@ -75,6 +90,9 @@ const Masters = (function () {
         empCode: document.getElementById('sCode').value.trim(),
         phone: document.getElementById('sPhone').value.trim(),
         vehicleNo: document.getElementById('sVehicle').value.trim(),
+        shiftStart: document.getElementById('sShiftStart').value,
+        shiftEnd: document.getElementById('sShiftEnd').value,
+        weekOff: document.getElementById('sWeekOff').value,
         role: document.getElementById('sRole').value,
         active: document.getElementById('sActive').value === '1'
       };
@@ -344,10 +362,18 @@ const Masters = (function () {
 
   function photoCell(r) {
     const links = [];
-    if (r.startOdoPhoto) links.push('<a href="' + r.startOdoPhoto + '" target="_blank">start</a>');
-    if (r.endOdoPhoto) links.push('<a href="' + r.endOdoPhoto + '" target="_blank">end</a>');
+    if (r.startOdoPhoto) links.push(photoLink(r.startOdoPhoto, 'start', r, 'Start of day'));
+    if (r.endOdoPhoto) links.push(photoLink(r.endOdoPhoto, 'end', r, 'End of day'));
     return links.length ? '<span style="font-size:12px">' + links.join(' &middot; ') + '</span>'
       : '<span style="font-size:12px;color:var(--muted)">-</span>';
+  }
+
+  // A meter photo is checked against the typed reading, so it opens over the table rather
+  // than in a new tab - the reader keeps the row in view while comparing.
+  function photoLink(url, label, r, when) {
+    const caption = when + ' &middot; ' + F.esc(r.runner) + ' &middot; ' + F.date(r.date) +
+      (r.startOdo || r.endOdo ? ' &middot; meter ' + (label === 'start' ? r.startOdo : r.endOdo) : '');
+    return '<a href="#" onclick="UI.photo(\'' + url + '\', \'' + caption.replace(/'/g, "") + '\'); return false;">' + label + '</a>';
   }
 
   return { bootRunners, bootPlaces, bootAttendance };

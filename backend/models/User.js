@@ -42,6 +42,12 @@ const userSchema = new mongoose.Schema({
   // tell "the admin switched this off" apart from "this field never existed". That is
   // exactly how every coordinator lost every right when this feature was added. A list has
   // no such ambiguity: absent means nothing was decided, present means it was.
+  // Shift the runner is expected on. Stored as plain HH:mm strings because that is what the
+  // office writes on the board; a night shift simply has an end earlier than its start.
+  shiftStart: { type: String, default: '' },   // '09:00'
+  shiftEnd:   { type: String, default: '' },   // '18:00'
+  weekOff:    { type: String, default: '' },   // 'Sunday', 'Rotational', etc.
+
   rightsSet: { type: Boolean, default: false },
   rightsGranted: { type: [String], default: undefined },
 
@@ -69,6 +75,7 @@ userSchema.methods.publicJSON = function () {
     id: this._id, name: this.name, username: this.username, role: this.role,
     empCode: this.empCode, phone: this.phone, vehicleNo: this.vehicleNo, branch: this.branch,
     dutyState: this.dutyState, activeTrip: this.activeTrip, lastLocation: this.lastLocation,
+    shiftStart: this.shiftStart, shiftEnd: this.shiftEnd, weekOff: this.weekOff,
     lastSeenAt: this.lastSeenAt, active: this.active, integrity: this.integrity,
     rights: this.effectiveRights()
   };

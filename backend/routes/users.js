@@ -82,7 +82,8 @@ const RIGHT_KEYS = ['manageStaff', 'managePlaces', 'createCases', 'assignTrips',
 // out rights. That split matters: a coordinator can add a new runner without being able to
 // quietly give herself the reports screen.
 router.post('/', can('manageStaff'), async (req, res) => {
-  const { name, username, password, role, empCode, phone, vehicleNo, branch } = req.body || {};
+  const { name, username, password, role, empCode, phone, vehicleNo, branch,
+          shiftStart, shiftEnd, weekOff } = req.body || {};
   if (!name || !username || !password) return res.status(400).json({ error: 'Name, user ID and password are required' });
 
   const clean = normaliseUsername(username);
@@ -96,7 +97,8 @@ router.post('/', can('manageStaff'), async (req, res) => {
     return res.status(403).json({ error: 'Only an admin can create another admin' });
   }
 
-  const u = new User({ name, username: clean, role: wanted, empCode, phone, vehicleNo, branch });
+  const u = new User({ name, username: clean, role: wanted, empCode, phone, vehicleNo, branch,
+                       shiftStart, shiftEnd, weekOff });
   // No applyRights call means no stored decision, which means the role's normal set applies.
   applyRights(u, req);
   u.setPassword(password);
@@ -135,7 +137,7 @@ router.put('/:id', can('manageStaff'), async (req, res) => {
     u.username = clean;
   }
 
-  ['name', 'empCode', 'phone', 'vehicleNo', 'branch'].forEach(f => {
+  ['name', 'empCode', 'phone', 'vehicleNo', 'branch', 'shiftStart', 'shiftEnd', 'weekOff'].forEach(f => {
     if (req.body[f] !== undefined) u[f] = req.body[f];
   });
 

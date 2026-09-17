@@ -395,6 +395,28 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 /* Moving the marker between two pings should glide, not teleport. */
 .leaflet-marker-icon { transition: transform .6s linear; }
 
+.proof-shot { width: 100%; border-radius: 8px; border: 1px solid var(--line); cursor: zoom-in; display: block; }
+.proof-shot:hover { border-color: var(--crimson); }
+.proof-gone { font-size: 13px; color: var(--muted); background: var(--mist); padding: 14px; border-radius: 8px; }
+
+/* Photo viewer. Sits over everything, dims the page, and keeps the caption with the image
+   so a meter reading can be compared without leaving the table. */
+.photoview {
+  position: fixed; inset: 0; z-index: 90; display: none;
+  align-items: center; justify-content: center; padding: 32px;
+  background: rgba(11,18,32,.82); cursor: zoom-out;
+}
+.photoview.is-open { display: flex; animation: fadeIn .15s ease both; }
+.photoview__box { margin: 0; max-width: 900px; width: 100%; text-align: center; }
+.photoview__box img {
+  max-width: 100%; max-height: 74vh; border-radius: var(--radius);
+  box-shadow: 0 24px 60px rgba(0,0,0,.45); background: #fff;
+}
+.photoview__box figcaption { color: rgba(255,255,255,.85); font-size: 13px; margin-top: 14px; }
+.photoview__gone { color: #FFD9DE; background: rgba(200,16,46,.25); padding: 28px; border-radius: var(--radius); font-size: 14px; }
+.photoview__open { display: inline-block; margin-top: 10px; color: rgba(255,255,255,.7); font-size: 12px; }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
 /* Rights checklist in the staff drawer. Plain rows, big tap targets - this is read by
    someone deciding what a colleague may do, so clarity beats density. */
 .rights-box { display: grid; gap: 2px; border: 1px solid var(--line); border-radius: var(--radius); padding: 6px; }

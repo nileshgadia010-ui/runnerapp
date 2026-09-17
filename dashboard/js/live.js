@@ -310,7 +310,12 @@ const Live = (function () {
       '<h4 style="margin:16px 0 4px">Time taken</h4>' +
       '<div class="grid-3">' + tatGrid + '</div>' +
 
-      (t.proofPhoto ? '<h4 style="margin:16px 0 8px">Handover proof</h4><img src="' + F.esc(t.proofPhoto) + '" style="width:100%;border-radius:8px;border:1px solid var(--line)">' : '') +
+      (t.proofPhoto
+        ? '<h4 style="margin:16px 0 8px">Handover proof</h4>' +
+          '<img src="' + F.esc(t.proofPhoto) + '" class="proof-shot" ' +
+          'onclick="UI.photo(\'' + F.esc(t.proofPhoto) + '\', \'Handover proof\')" ' +
+          'onerror="this.outerHTML = \'<p class=&quot;proof-gone&quot;>This photo is no longer on the server.</p>\'">'
+        : '') +
       (t.sampleBarcode ? '<p style="margin-top:12px">Sample barcode: <span class="mono">' + F.esc(t.sampleBarcode) + '</span></p>' : '') +
       (t.runnerNote ? '<p style="margin-top:8px;color:var(--muted)">Runner note: ' + F.esc(t.runnerNote) + '</p>' : '') +
 
