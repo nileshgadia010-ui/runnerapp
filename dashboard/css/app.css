@@ -192,6 +192,12 @@ button, input, select, textarea { font: inherit; color: inherit; }
    a hidden rail button stayed visible while refusing every click. This makes `hidden` mean
    hidden everywhere. */
 [hidden] { display: none !important; }
+
+/* A screen this account cannot open. Still listed, so the rail does not change shape after
+   the rights load - it just reads as unavailable. */
+.rail__link.is-locked { opacity: .35; cursor: not-allowed; }
+.rail__link.is-locked:hover { background: none; color: rgba(255,255,255,.72); }
+.rail__link.is-locked::after { content: '🔒'; margin-left: auto; font-size: 11px; }
 .rail__link.is-active { background: rgba(255,255,255,.1); color: #fff; box-shadow: inset 3px 0 0 var(--crimson); }
 .rail__link svg { width: 18px; height: 18px; flex: none; }
 .rail__user { border-top: 1px solid rgba(255,255,255,.12); padding-top: 14px; font-size: 13px; }

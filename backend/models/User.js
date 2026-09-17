@@ -87,8 +87,11 @@ const ROLE_RIGHTS = {
     manageStaff: true, managePlaces: true, createCases: true,
     assignTrips: true, overrideStages: true, editSettings: true, viewReports: true
   },
+  // A coordinator runs the desk day to day, and that includes adding a new runner and
+  // writing his shift - waiting for an admin to do it would stall the shift board. An admin
+  // can still take this away from one person through the rights checklist.
   coordinator: {
-    manageStaff: false, managePlaces: true, createCases: true,
+    manageStaff: true, managePlaces: true, createCases: true,
     assignTrips: true, overrideStages: true, editSettings: true, viewReports: true
   },
   runner: {

@@ -11,7 +11,7 @@ const Main = (function () {
   };
 
   function go(page) {
-    if (!allowed(page)) { toast('You do not have rights for that screen', 'error'); return; }
+    if (!allowed(page)) { toast('You do not have rights for that screen. Ask an admin.', 'error'); return; }
     document.querySelectorAll('.rail__link').forEach(b => b.classList.toggle('is-active', b.dataset.page === page));
     document.querySelectorAll('.page').forEach(p => { p.hidden = p.dataset.page !== page; });
     if (loaders[page]) Promise.resolve(loaders[page]()).catch(e => toast(e.message, 'error'));
@@ -69,16 +69,22 @@ const Main = (function () {
   function applyRights() {
     if (!rightsUsable()) return;
 
+    // Lock rather than hide. Rights arrive a moment after the page paints, so removing a
+    // link makes it appear and then vanish under the reader's eye - which looks like a bug
+    // even when it is correct. A dimmed, locked link is honest: the screen exists, this
+    // account just cannot open it, and the tooltip says to ask an admin.
     Object.keys(PAGE_RIGHT).forEach(page => {
-      if (API.can(PAGE_RIGHT[page])) return;
       const link = document.querySelector('.rail__link[data-page="' + page + '"]');
-      if (link) link.hidden = true;
+      if (!link) return;
+      const ok = API.can(PAGE_RIGHT[page]);
+      link.classList.toggle('is-locked', !ok);
+      link.title = ok ? '' : 'You do not have rights for this screen. Ask an admin.';
     });
 
     [['newCaseBtn', 'createCases'], ['newRunnerBtn', 'manageStaff'], ['newPlaceBtn', 'managePlaces']]
       .forEach(([id, right]) => {
         const el = document.getElementById(id);
-        if (el && !API.can(right)) el.hidden = true;
+        if (el) el.hidden = !API.can(right);
       });
   }
 
