@@ -15,8 +15,23 @@ const realtime = require('../services/realtime');
 // UPLOAD_DIR lets a host mount a persistent disk (e.g. Render disk at /var/data/uploads).
 // Without it, photos go to backend/uploads which is fine on a VPS but wiped on every
 // redeploy on ephemeral hosts like Render's default filesystem.
-const uploadDir = process.env.UPLOAD_DIR || path.join(__dirname, '..', 'uploads');
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+// UPLOAD_DIR lets a host mount a persistent disk (e.g. Render disk at /var/data/uploads).
+// If that path is not writable - disk not mounted yet, wrong permissions - fall back to the
+// local folder instead of crashing the whole server over a photo directory.
+const localUploads = path.join(__dirname, '..', 'uploads');
+function resolveUploadDir() {
+  const wanted = process.env.UPLOAD_DIR || localUploads;
+  try {
+    if (!fs.existsSync(wanted)) fs.mkdirSync(wanted, { recursive: true });
+    fs.accessSync(wanted, fs.constants.W_OK);
+    return wanted;
+  } catch (e) {
+    console.warn('[uploads] cannot use ' + wanted + ' (' + e.code + '), falling back to ' + localUploads);
+    if (!fs.existsSync(localUploads)) fs.mkdirSync(localUploads, { recursive: true });
+    return localUploads;
+  }
+}
+const uploadDir = resolveUploadDir();
 const upload = multer({
   storage: multer.diskStorage({
     destination: (req, file, cb) => cb(null, uploadDir),
