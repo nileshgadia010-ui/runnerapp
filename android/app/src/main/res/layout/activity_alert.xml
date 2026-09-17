@@ -83,7 +83,34 @@
             android:layout_marginTop="3dp"
             android:textColor="@color/muted"
             android:textSize="14sp" />
+
+        <!-- Distance before he says yes, so accepting is an informed decision. -->
+        <TextView
+            android:id="@+id/alertDistance"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/chip_blue"
+            android:paddingLeft="12dp"
+            android:paddingRight="12dp"
+            android:paddingTop="7dp"
+            android:paddingBottom="7dp"
+            android:textColor="@color/cobalt"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
     </LinearLayout>
+
+    <TextView
+        android:id="@+id/alertWaiting"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="14dp"
+        android:gravity="center"
+        android:textColor="@color/crimson"
+        android:textSize="14sp"
+        android:fontFamily="monospace"
+        android:textStyle="bold" />
 
     <View
         android:layout_width="match_parent"
@@ -95,10 +122,13 @@
         android:layout_width="match_parent"
         android:layout_height="64dp"
         android:background="@drawable/btn_green"
-        android:text="Accept the job"
+        android:text="ACCEPT THE JOB"
         android:textAllCaps="false"
         android:textColor="#FFFFFF"
-        android:textSize="19sp" />
+        android:textSize="19sp"
+        android:textStyle="bold"
+        android:letterSpacing="0.04"
+        android:stateListAnimator="@null" />
 
     <Button
         android:id="@+id/declineBtn"
@@ -110,5 +140,6 @@
         android:text="I cannot take it"
         android:textAllCaps="false"
         android:textColor="@color/ink"
-        android:textSize="15sp" />
+        android:textSize="15sp"
+        android:stateListAnimator="@null" />
 </LinearLayout>

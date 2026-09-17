@@ -3,6 +3,9 @@ package com.searvator.ibsrunner;
 import android.content.Intent;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.view.View;
 import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.EditText;
@@ -16,19 +19,26 @@ import org.json.JSONObject;
 
 /**
  * The screen that wakes the phone when the desk assigns a job.
- * The alarm sound itself is played by DutyService on the alarm stream, so a silent
- * or vibrate-only phone still makes noise.
+ *
+ * The alarm sound is played by DutyService on the ALARM stream, which Android does not mute
+ * in silent mode, at full volume, on a loop, and it keeps going until this screen is answered.
+ * The back button does nothing here on purpose - a job is accepted or declined, not dismissed.
  */
 public class AlertActivity extends AppCompatActivity {
 
     private Api api;
+    private SyncQueue queue;
     private JSONObject trip;
     private String tripId;
+    private final Handler ui = new Handler(Looper.getMainLooper());
+    private long shownAt = 0;
 
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
         api = new Api(this);
+        queue = new SyncQueue(this);
+        Clock.restore(this);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true);
@@ -42,6 +52,7 @@ public class AlertActivity extends AppCompatActivity {
 
         setContentView(R.layout.activity_alert);
         load(getIntent());
+        ui.post(waiting);
     }
 
     @Override
@@ -50,31 +61,66 @@ public class AlertActivity extends AppCompatActivity {
         load(intent);
     }
 
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        ui.removeCallbacks(waiting);
+    }
+
+    /** A visible counter of how long the job has been ringing unanswered. */
+    private final Runnable waiting = new Runnable() {
+        @Override public void run() {
+            TextView t = findViewById(R.id.alertWaiting);
+            if (t != null && shownAt > 0) {
+                long s = (Clock.now() - shownAt) / 1000;
+                t.setText("Ringing for " + Clock.hms(s));
+            }
+            ui.postDelayed(this, 1000);
+        }
+    };
+
     private void load(Intent intent) {
         String raw = intent == null ? null : intent.getStringExtra("trip");
         if (raw == null) { finish(); return; }
         try { trip = new JSONObject(raw); } catch (Exception e) { finish(); return; }
 
         tripId = trip.optString("id");
-        try { api.post("/api/runner/alert-seen", new JSONObject().put("tripId", tripId), (ok, d, e) -> { }); } catch (Exception ignored) { }
+        shownAt = Clock.now();
+
+        try {
+            api.post("/api/runner/alert-seen", new JSONObject().put("tripId", tripId), (ok, d, e) -> { });
+        } catch (Exception ignored) { }
 
         boolean sample = "SAMPLE_PICKUP".equals(trip.optString("type"));
-        JSONObject target = sample ? trip.optJSONObject("pickup") : trip.optJSONObject("drop");
+        JSONObject target = trip.optJSONObject("target");
+        if (target == null) target = sample ? trip.optJSONObject("pickup") : trip.optJSONObject("drop");
 
         ((TextView) findViewById(R.id.alertKind)).setText(sample ? "Go and collect a sample" : "Go and deliver blood");
         ((TextView) findViewById(R.id.alertPlace)).setText(target != null ? target.optString("name") : "");
         ((TextView) findViewById(R.id.alertArea)).setText(target != null ? target.optString("area") : "");
         ((TextView) findViewById(R.id.alertPatient)).setText(trip.optString("patientName"));
         ((TextView) findViewById(R.id.alertMeta)).setText(join(trip));
-        ((TextView) findViewById(R.id.alertPriority)).setText(trip.optString("priority", "ROUTINE"));
 
         String priority = trip.optString("priority", "ROUTINE");
-        findViewById(R.id.alertPriority).setBackgroundResource(
-                "EMERGENCY".equals(priority) ? R.drawable.chip_red
-                        : "URGENT".equals(priority) ? R.drawable.chip_amber : R.drawable.chip_grey);
+        TextView pr = findViewById(R.id.alertPriority);
+        pr.setText(priority);
+        pr.setBackgroundResource("EMERGENCY".equals(priority) ? R.drawable.chip_red
+                : "URGENT".equals(priority) ? R.drawable.chip_amber : R.drawable.chip_grey);
+
+        // How far he is being asked to go, before he says yes.
+        TextView dist = findViewById(R.id.alertDistance);
+        if (!trip.isNull("targetKm")) {
+            double km = trip.optDouble("targetKm", 0);
+            int eta = trip.optInt("targetEtaMin", 0);
+            dist.setText("≈ " + String.format(java.util.Locale.US, "%.1f", km) + " km away  •  about " + eta + " min");
+            dist.setVisibility(View.VISIBLE);
+        } else {
+            dist.setVisibility(View.GONE);
+        }
 
         Button accept = findViewById(R.id.acceptBtn);
         Button decline = findViewById(R.id.declineBtn);
+        Anim.press(accept, decline);
         accept.setOnClickListener(v -> accept());
         decline.setOnClickListener(v -> decline());
     }
@@ -84,47 +130,71 @@ public class AlertActivity extends AppCompatActivity {
         String[] fields = {"patientAge", "patientGender", "bloodGroup", "component"};
         for (String f : fields) {
             String v = t.optString(f, "");
-            if (!v.isEmpty()) { if (sb.length() > 0) sb.append("  |  "); sb.append(v); }
+            if (!v.isEmpty() && !"null".equals(v)) { if (sb.length() > 0) sb.append("  |  "); sb.append(v); }
         }
         int units = t.optInt("units", 0);
         if (units > 0) sb.append(sb.length() > 0 ? "  |  " : "").append(units).append(" unit(s)");
         return sb.toString();
     }
 
+    /**
+     * Accepting stops the alarm and opens the job immediately. The server call runs behind
+     * that; with no network the acceptance is queued with the time he actually tapped, which
+     * is the number the accept-time SLA is measured on.
+     */
     private void accept() {
         DutyService.silence(this);
         findViewById(R.id.acceptBtn).setEnabled(false);
+
+        final String at = Clock.nowIso();
         try {
-            JSONObject body = new JSONObject().put("stage", "ACCEPTED");
+            JSONObject body = new JSONObject().put("stage", "ACCEPTED").put("at", at);
             api.post("/api/runner/trip/" + tripId + "/stage", body, (ok, data, err) -> {
                 if (!ok) {
-                    Toast.makeText(this, err == null ? "Could not accept" : err, Toast.LENGTH_LONG).show();
-                    findViewById(R.id.acceptBtn).setEnabled(true);
-                    return;
+                    boolean networkProblem = err == null || err.startsWith("No internet")
+                            || err.startsWith("Cannot reach") || err.startsWith("Server is slow");
+                    if (networkProblem) {
+                        queue.addStage(tripId, "ACCEPTED", 0, 0, null, null, null);
+                        Toast.makeText(this, "Accepted. Saved on your phone, the office will get it.",
+                                Toast.LENGTH_SHORT).show();
+                    } else {
+                        Toast.makeText(this, err, Toast.LENGTH_LONG).show();
+                        findViewById(R.id.acceptBtn).setEnabled(true);
+                        return;
+                    }
                 }
-                Intent i = new Intent(this, TripActivity.class);
-                i.putExtra("tripId", tripId);
-                i.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-                startActivity(i);
-                finish();
+                openTrip();
             });
-        } catch (Exception e) { findViewById(R.id.acceptBtn).setEnabled(true); }
+        } catch (Exception e) {
+            openTrip();
+        }
+    }
+
+    private void openTrip() {
+        Intent i = new Intent(this, TripActivity.class);
+        i.putExtra("tripId", tripId);
+        i.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        startActivity(i);
+        finish();
     }
 
     private void decline() {
-        EditText input = new EditText(this);
+        final EditText input = new EditText(this);
         input.setHint("Why can you not take this job?");
         new AlertDialog.Builder(this)
                 .setTitle("Decline this job")
                 .setView(input)
                 .setPositiveButton("Decline", (d, w) -> {
                     DutyService.silence(this);
+                    final String note = input.getText().toString().trim();
                     try {
                         JSONObject body = new JSONObject()
                                 .put("stage", "REJECTED")
-                                .put("note", input.getText().toString().trim());
+                                .put("at", Clock.nowIso())
+                                .put("note", note);
                         api.post("/api/runner/trip/" + tripId + "/stage", body, (ok, data, err) -> {
-                            Toast.makeText(this, ok ? "The desk has been told" : String.valueOf(err), Toast.LENGTH_LONG).show();
+                            if (!ok) queue.addStage(tripId, "REJECTED", 0, 0, null, null, note);
+                            Toast.makeText(this, "The desk has been told", Toast.LENGTH_LONG).show();
                             finish();
                         });
                     } catch (Exception e) { finish(); }

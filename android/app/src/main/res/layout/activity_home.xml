@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Home. Three things the runner needs, top to bottom:
+     1. how long he has been on duty and what he has done today,
+     2. the one job he is on right now,
+     3. the list of everything else, today first, then the recent days. -->
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/homeScroll"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/mist"
@@ -10,210 +15,230 @@
         android:layout_height="wrap_content"
         android:orientation="vertical">
 
-        <!-- header -->
+        <!-- ============ dark hero ============ -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:background="@color/ink"
             android:orientation="vertical"
-            android:padding="20dp">
+            android:background="@drawable/hero_dark"
+            android:paddingLeft="20dp"
+            android:paddingRight="20dp"
+            android:paddingTop="44dp"
+            android:paddingBottom="22dp">
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center_vertical"
-                android:orientation="horizontal">
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/hello"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Hello"
+                        android:textColor="@color/paper"
+                        android:textSize="21sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/empLine"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:textColor="#93A3BC"
+                        android:textSize="12sp" />
+                </LinearLayout>
 
                 <TextView
-                    android:id="@+id/hello"
-                    android:layout_width="0dp"
+                    android:id="@+id/dutyChip"
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="Hello"
-                    android:textColor="#FFFFFF"
-                    android:textSize="20sp"
+                    android:background="@drawable/chip_grey"
+                    android:paddingLeft="14dp"
+                    android:paddingRight="14dp"
+                    android:paddingTop="7dp"
+                    android:paddingBottom="7dp"
+                    android:text="Off duty"
+                    android:textColor="@color/ink"
+                    android:textSize="12sp"
                     android:textStyle="bold" />
 
                 <TextView
                     android:id="@+id/signOutBtn"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:layout_marginStart="10dp"
                     android:padding="8dp"
-                    android:text="Sign out"
-                    android:textColor="#B7BECC"
-                    android:textSize="13sp" />
+                    android:text="⏻"
+                    android:textColor="#93A3BC"
+                    android:textSize="18sp" />
             </LinearLayout>
 
+            <!-- the big duty clock -->
             <TextView
-                android:id="@+id/dutyChip"
+                android:id="@+id/dutyTimer"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:background="@drawable/chip_grey"
-                android:paddingLeft="12dp"
-                android:paddingTop="5dp"
-                android:paddingRight="12dp"
-                android:paddingBottom="5dp"
-                android:text="Off duty"
-                android:textColor="@color/ink"
-                android:textSize="13sp" />
+                android:layout_marginTop="18dp"
+                android:text="00:00"
+                android:textColor="@color/paper"
+                android:textSize="46sp"
+                android:fontFamily="monospace"
+                android:letterSpacing="-0.02" />
 
+            <TextView
+                android:id="@+id/dutyCaption"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="TODAY ON DUTY"
+                android:textColor="#7C8CA8"
+                android:textSize="11sp"
+                android:letterSpacing="0.14"
+                android:textStyle="bold" />
+
+            <!-- today's numbers -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="18dp"
-                android:orientation="horizontal">
+                android:orientation="horizontal"
+                android:layout_marginTop="20dp">
 
                 <LinearLayout
+                    android:id="@+id/tileKm"
                     android:layout_width="0dp"
-                    android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:orientation="vertical">
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:background="@drawable/stat_tile"
+                    android:padding="12dp">
 
                     <TextView
-                        android:id="@+id/dutyTimer"
+                        android:id="@+id/kmToday"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="00:00"
-                        android:textColor="#FFFFFF"
-                        android:textSize="26sp" />
+                        android:text="0.0"
+                        android:textColor="@color/paper"
+                        android:textSize="22sp"
+                        android:textStyle="bold" />
 
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="On duty today"
-                        android:textColor="#93A0B5"
-                        android:textSize="12sp" />
+                        android:text="KM TODAY"
+                        android:textColor="#7C8CA8"
+                        android:textSize="10sp"
+                        android:letterSpacing="0.1" />
                 </LinearLayout>
 
                 <LinearLayout
+                    android:id="@+id/tileTrips"
                     android:layout_width="0dp"
-                    android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:orientation="vertical">
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:background="@drawable/stat_tile"
+                    android:layout_marginStart="10dp"
+                    android:padding="12dp">
 
                     <TextView
                         android:id="@+id/tripsToday"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="0"
-                        android:textColor="#FFFFFF"
-                        android:textSize="26sp" />
+                        android:textColor="@color/paper"
+                        android:textSize="22sp"
+                        android:textStyle="bold" />
 
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Jobs finished today"
-                        android:textColor="#93A0B5"
-                        android:textSize="12sp" />
+                        android:text="JOBS DONE"
+                        android:textColor="#7C8CA8"
+                        android:textSize="10sp"
+                        android:letterSpacing="0.1" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/tileHours"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:background="@drawable/stat_tile"
+                    android:layout_marginStart="10dp"
+                    android:padding="12dp">
+
+                    <TextView
+                        android:id="@+id/hoursWeek"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="0h"
+                        android:textColor="@color/paper"
+                        android:textSize="22sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="5 DAY HOURS"
+                        android:textColor="#7C8CA8"
+                        android:textSize="10sp"
+                        android:letterSpacing="0.1" />
                 </LinearLayout>
             </LinearLayout>
         </LinearLayout>
 
-        <!-- body -->
+        <!-- ============ body ============ -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:padding="16dp">
 
-            <LinearLayout
-                android:id="@+id/jobCard"
+            <!-- banners -->
+            <TextView
+                android:id="@+id/offlineBanner"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:background="@drawable/card"
-                android:orientation="vertical"
-                android:padding="16dp"
-                android:visibility="gone">
-
-                <TextView
-                    android:id="@+id/jobStage"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:background="@drawable/chip_blue"
-                    android:paddingLeft="10dp"
-                    android:paddingTop="4dp"
-                    android:paddingRight="10dp"
-                    android:paddingBottom="4dp"
-                    android:text="Running"
-                    android:textColor="@color/cobalt"
-                    android:textSize="12sp" />
-
-                <TextView
-                    android:id="@+id/jobTitle"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:textColor="@color/ink"
-                    android:textSize="17sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/jobSub"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="3dp"
-                    android:textColor="@color/muted"
-                    android:textSize="14sp" />
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Time on this job "
-                        android:textColor="@color/muted"
-                        android:textSize="13sp" />
-
-                    <TextView
-                        android:id="@+id/jobTimer"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="00:00"
-                        android:textColor="@color/crimson"
-                        android:textSize="16sp"
-                        android:textStyle="bold" />
-                </LinearLayout>
-
-                <Button
-                    android:id="@+id/openJobBtn"
-                    android:layout_width="match_parent"
-                    android:layout_height="50dp"
-                    android:layout_marginTop="12dp"
-                    android:background="@drawable/btn_red"
-                    android:text="Open the job"
-                    android:textAllCaps="false"
-                    android:textColor="#FFFFFF"
-                    android:textSize="15sp" />
-            </LinearLayout>
+                android:background="@drawable/banner_offline"
+                android:padding="14dp"
+                android:layout_marginBottom="12dp"
+                android:textColor="@color/ink"
+                android:textSize="13sp"
+                android:lineSpacingExtra="3dp"
+                android:visibility="gone" />
 
             <TextView
-                android:id="@+id/freeNote"
+                android:id="@+id/warnBanner"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:background="@drawable/card"
-                android:padding="22dp"
-                android:gravity="center"
-                android:text="Punch in to start your shift."
-                android:textColor="@color/muted"
-                android:textSize="15sp" />
+                android:background="@drawable/banner_warn"
+                android:padding="14dp"
+                android:layout_marginBottom="12dp"
+                android:textColor="@color/ink"
+                android:textSize="13sp"
+                android:lineSpacingExtra="3dp"
+                android:visibility="gone" />
 
+            <!-- punch -->
             <Button
                 android:id="@+id/punchBtn"
                 android:layout_width="match_parent"
-                android:layout_height="58dp"
-                android:layout_marginTop="16dp"
+                android:layout_height="60dp"
                 android:background="@drawable/btn_red"
-                android:text="Punch in"
-                android:textAllCaps="false"
-                android:textColor="#FFFFFF"
-                android:textSize="17sp" />
+                android:text="PUNCH IN"
+                android:textColor="@color/paper"
+                android:textSize="17sp"
+                android:letterSpacing="0.06"
+                android:textStyle="bold"
+                android:stateListAnimator="@null" />
 
             <Button
                 android:id="@+id/breakBtn"
@@ -222,18 +247,144 @@
                 android:layout_marginTop="10dp"
                 android:background="@drawable/btn_outline"
                 android:text="Take a break"
+                android:textColor="@color/ink_soft"
+                android:textSize="14sp"
                 android:textAllCaps="false"
-                android:textColor="@color/ink"
-                android:textSize="15sp"
+                android:stateListAnimator="@null"
                 android:visibility="gone" />
 
+            <!-- live job -->
+            <LinearLayout
+                android:id="@+id/jobCard"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="@drawable/card_live"
+                android:padding="16dp"
+                android:layout_marginTop="16dp"
+                android:visibility="gone">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <TextView
+                        android:id="@+id/jobStage"
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:layout_height="wrap_content"
+                        android:text="RUNNING JOB"
+                        android:textColor="@color/crimson"
+                        android:textSize="11sp"
+                        android:letterSpacing="0.12"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/jobTimer"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="00:00"
+                        android:textColor="@color/ink"
+                        android:textSize="18sp"
+                        android:fontFamily="monospace"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/jobTitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:textColor="@color/ink"
+                    android:textSize="19sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/jobSub"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:textColor="@color/ink_soft"
+                    android:textSize="14sp"
+                    android:lineSpacingExtra="2dp" />
+
+                <TextView
+                    android:id="@+id/jobDistance"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:background="@drawable/chip_blue"
+                    android:paddingLeft="12dp"
+                    android:paddingRight="12dp"
+                    android:paddingTop="6dp"
+                    android:paddingBottom="6dp"
+                    android:textColor="@color/cobalt"
+                    android:textSize="12sp"
+                    android:textStyle="bold"
+                    android:visibility="gone" />
+
+                <Button
+                    android:id="@+id/openJobBtn"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:layout_marginTop="14dp"
+                    android:background="@drawable/btn_dark"
+                    android:text="OPEN JOB"
+                    android:textColor="@color/paper"
+                    android:textSize="15sp"
+                    android:letterSpacing="0.06"
+                    android:textStyle="bold"
+                    android:stateListAnimator="@null" />
+            </LinearLayout>
+
             <TextView
+                android:id="@+id/freeNote"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="16dp"
-                android:text="Keep location and internet on while you are punched in. The phone will ring loudly when the desk sends you a job."
+                android:background="@drawable/card_flat"
+                android:padding="20dp"
+                android:gravity="center"
                 android:textColor="@color/muted"
-                android:textSize="12sp" />
+                android:textSize="14sp"
+                android:lineSpacingExtra="4dp"
+                android:text="Punch in to start your shift." />
+
+            <!-- trip history -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="26dp"
+                android:layout_marginBottom="4dp"
+                android:text="YOUR JOBS"
+                android:textColor="@color/muted"
+                android:textSize="11sp"
+                android:letterSpacing="0.14"
+                android:textStyle="bold" />
+
+            <LinearLayout
+                android:id="@+id/tripList"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+
+            <TextView
+                android:id="@+id/tripEmpty"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/card_flat"
+                android:padding="20dp"
+                android:gravity="center"
+                android:text="No jobs yet."
+                android:textColor="@color/muted"
+                android:textSize="14sp" />
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="28dp" />
         </LinearLayout>
     </LinearLayout>
 </ScrollView>

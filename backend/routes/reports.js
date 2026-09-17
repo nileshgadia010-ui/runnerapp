@@ -161,7 +161,17 @@ router.get('/attendance', async (req, res) => {
       hours: Math.round(r.totalMinutes / 6) / 10,
       tripsDone: r.tripsDone,
       open: r.open,
-      punchInPlace: r.sessions[0] ? (r.sessions[0].inAddress || (r.sessions[0].inLat + ', ' + r.sessions[0].inLng)) : ''
+      punchInPlace: r.sessions[0] ? (r.sessions[0].inAddress || (r.sessions[0].inLat + ', ' + r.sessions[0].inLng)) : '',
+
+      // Odometer versus GPS. Two independent measures of the same day - when they disagree
+      // by a lot, that is the row worth asking about.
+      startOdo: r.startOdo || 0,
+      endOdo: r.endOdo || 0,
+      odoKm: r.odoKm || 0,
+      gpsKm: r.distanceKm || 0,
+      odoGap: r.odoKm && r.distanceKm ? Math.round((r.odoKm - r.distanceKm) * 10) / 10 : null,
+      startOdoPhoto: r.startOdoPhoto || '',
+      endOdoPhoto: r.endOdoPhoto || ''
     }))
   });
 });

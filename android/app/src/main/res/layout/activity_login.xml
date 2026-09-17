@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Sign in. Dark, calm, and built for one thumb: the fields and the button sit in the
+     lower half of the screen where the thumb actually reaches on a 6.5 inch phone. -->
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -9,130 +11,222 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="24dp">
+        android:paddingLeft="24dp"
+        android:paddingRight="24dp"
+        android:paddingTop="56dp"
+        android:paddingBottom="32dp">
 
-        <ImageView
-            android:layout_width="56dp"
-            android:layout_height="56dp"
+        <!-- brand -->
+        <LinearLayout
+            android:id="@+id/brandRow"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <View
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:background="@drawable/btn_red" />
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginStart="12dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="IBS RUNNER"
+                    android:textColor="@color/paper"
+                    android:textSize="20sp"
+                    android:letterSpacing="0.12"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Indian Blood Service"
+                    android:textColor="#93A3BC"
+                    android:textSize="12sp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <View
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+
+        <TextView
+            android:id="@+id/loginHead"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
             android:layout_marginTop="48dp"
-            android:src="@drawable/ic_launcher"
-            android:contentDescription="@string/app_name" />
+            android:text="Sign in"
+            android:textColor="@color/paper"
+            android:textSize="30sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/loginSub"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="Use the ID and password the office gave you"
+            android:textColor="#93A3BC"
+            android:textSize="14sp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="28dp"
+            android:layout_marginBottom="8dp"
+            android:text="USER ID"
+            android:textColor="#7C8CA8"
+            android:textSize="11sp"
+            android:letterSpacing="0.1"
+            android:textStyle="bold" />
+
+        <EditText
+            android:id="@+id/username"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:background="@drawable/field_dark"
+            android:paddingLeft="16dp"
+            android:paddingRight="16dp"
+            android:hint="runner1"
+            android:textColorHint="#5D6B85"
+            android:textColor="@color/paper"
+            android:textSize="17sp"
+            android:inputType="text"
+            android:imeOptions="actionNext"
+            android:singleLine="true" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="18dp"
-            android:text="Indian Blood Service"
-            android:textColor="#FFFFFF"
-            android:textSize="24sp"
+            android:layout_marginBottom="8dp"
+            android:text="PASSWORD"
+            android:textColor="#7C8CA8"
+            android:textSize="11sp"
+            android:letterSpacing="0.1"
             android:textStyle="bold" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:layout_marginBottom="26dp"
-            android:text="Runner app. Sign in once, stay signed in."
-            android:textColor="#B7BECC"
-            android:textSize="14sp" />
 
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="@drawable/card"
-            android:orientation="vertical"
-            android:padding="18dp">
-
-            <TextView
-                android:id="@+id/error"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:background="@drawable/chip_red"
-                android:padding="10dp"
-                android:layout_marginBottom="12dp"
-                android:textColor="@color/crimson"
-                android:visibility="gone" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="User ID"
-                android:textColor="@color/muted"
-                android:textSize="13sp" />
-
-            <EditText
-                android:id="@+id/username"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:background="@drawable/field_bg"
-                android:inputType="text"
-                android:autofillHints="username"
-                android:padding="12dp" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="14dp"
-                android:text="Password"
-                android:textColor="@color/muted"
-                android:textSize="13sp" />
+            android:layout_height="56dp"
+            android:orientation="horizontal"
+            android:background="@drawable/field_dark">
 
             <EditText
                 android:id="@+id/password"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:background="@drawable/field_bg"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="match_parent"
+                android:background="@null"
+                android:paddingLeft="16dp"
+                android:hint="••••••"
+                android:textColorHint="#5D6B85"
+                android:textColor="@color/paper"
+                android:textSize="17sp"
                 android:inputType="textPassword"
-                android:autofillHints="password"
-                android:padding="12dp" />
-
-            <Button
-                android:id="@+id/signIn"
-                android:layout_width="match_parent"
-                android:layout_height="52dp"
-                android:layout_marginTop="20dp"
-                android:background="@drawable/btn_red"
-                android:text="Sign in"
-                android:textAllCaps="false"
-                android:textColor="#FFFFFF"
-                android:textSize="16sp" />
+                android:imeOptions="actionDone"
+                android:singleLine="true" />
 
             <TextView
-                android:id="@+id/serverToggle"
+                android:id="@+id/showPass"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:paddingLeft="14dp"
+                android:paddingRight="16dp"
+                android:text="SHOW"
+                android:textColor="#93A3BC"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/loginError"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:padding="12dp"
+            android:background="@drawable/chip_red"
+            android:textColor="#FFD9DE"
+            android:textSize="13sp"
+            android:visibility="gone" />
+
+        <Button
+            android:id="@+id/loginBtn"
+            android:layout_width="match_parent"
+            android:layout_height="58dp"
+            android:layout_marginTop="24dp"
+            android:background="@drawable/btn_red"
+            android:text="SIGN IN"
+            android:textColor="@color/paper"
+            android:textSize="16sp"
+            android:letterSpacing="0.06"
+            android:textStyle="bold"
+            android:stateListAnimator="@null" />
+
+        <ProgressBar
+            android:id="@+id/loginSpin"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="3dp"
+            android:layout_marginTop="10dp"
+            android:indeterminate="true"
+            android:visibility="invisible" />
+
+        <View
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+
+        <!-- Hidden unless the office needs to move this phone to another server.
+             Long-press the version line below to reveal it. -->
+        <LinearLayout
+            android:id="@+id/serverRow"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginTop="28dp"
+            android:visibility="gone">
+
+            <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_gravity="center_horizontal"
-                android:layout_marginTop="14dp"
-                android:padding="6dp"
-                android:text="Server settings"
-                android:textColor="@color/cobalt"
-                android:textSize="13sp" />
+                android:layout_marginBottom="8dp"
+                android:text="SERVER ADDRESS"
+                android:textColor="#7C8CA8"
+                android:textSize="11sp"
+                android:letterSpacing="0.1"
+                android:textStyle="bold" />
 
-            <LinearLayout
-                android:id="@+id/serverRow"
+            <EditText
+                android:id="@+id/serverUrl"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:visibility="gone">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Server address"
-                    android:textColor="@color/muted"
-                    android:textSize="13sp" />
-
-                <EditText
-                    android:id="@+id/server"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="6dp"
-                    android:background="@drawable/field_bg"
-                    android:inputType="textUri"
-                    android:padding="12dp" />
-            </LinearLayout>
+                android:layout_height="50dp"
+                android:background="@drawable/field_dark"
+                android:paddingLeft="16dp"
+                android:paddingRight="16dp"
+                android:textColor="@color/paper"
+                android:textSize="14sp"
+                android:inputType="textUri"
+                android:singleLine="true" />
         </LinearLayout>
+
+        <TextView
+            android:id="@+id/versionLine"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="28dp"
+            android:gravity="center"
+            android:text="Searvator IT Solutions"
+            android:textColor="#55637C"
+            android:textSize="12sp" />
     </LinearLayout>
 </ScrollView>

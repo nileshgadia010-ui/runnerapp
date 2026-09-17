@@ -71,6 +71,14 @@ const Main = (function () {
           const cases = document.querySelector('.page[data-page="cases"]');
           if (cases && !cases.hidden) Cases.load();
         }));
+
+      // A phone that starts reporting a VPN, a fake-GPS app or root raises this once, the
+      // moment it changes. It is information for the desk, not an alarm - so it repaints
+      // the board and leaves a line in the console rather than interrupting anyone.
+      socket.on('runner:integrity', d => {
+        console.warn('[integrity]', d.name, d);
+        Live.refresh();
+      });
     }
   }
 

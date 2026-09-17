@@ -37,6 +37,12 @@ router.get('/live', async (req, res) => {
     lastLocation: r.lastLocation,
     lastSeenAt: r.lastSeenAt,
     signalLost: r.dutyState !== 'OFF_DUTY' && (!r.lastSeenAt || new Date(r.lastSeenAt).getTime() < stale),
+
+    // Environment flags the phone reported. These are hints, not proof - any client side
+    // check can be defeated - but a runner who keeps showing up flagged is worth a word.
+    integrity: r.integrity || null,
+    flagged: !!(r.integrity && (r.integrity.vpn || r.integrity.mockLocation || r.integrity.rooted)),
+
     trip: r.activeTrip ? byId[String(r.activeTrip)] || null : null
   })));
 });

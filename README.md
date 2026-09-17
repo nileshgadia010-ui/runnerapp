@@ -127,6 +127,10 @@ Proof photos are written to `backend/uploads/` — back that folder up along wit
 
 ## 4. Android runner app
 
+Latest changes (offline mode, fixed timers, odometer photos, VPN detection, new UI):
+**[docs/WHATS-NEW-v1.1.md](docs/WHATS-NEW-v1.1.md)** — read the deploy order section before
+handing out a new APK.
+
 Full build instructions with your exact toolchain: **[docs/ANDROID-BUILD.md](docs/ANDROID-BUILD.md)**
 Phone-side settings so the ring works on silent: **[docs/PHONE-SETUP.md](docs/PHONE-SETUP.md)**
 

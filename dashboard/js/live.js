@@ -164,11 +164,24 @@ const Live = (function () {
     const line = r.trip
       ? 'Trip ' + r.trip.tripNo + ' &middot; ' + F.stageLabel(r.trip.type, r.trip.status)
       : (r.dutyState === 'AVAILABLE' ? 'Free, waiting for a job' : r.dutyState === 'BREAK' ? 'On break' : 'Not punched in');
+    // A phone reporting a VPN or a fake-GPS app gets a visible mark. It does not block
+    // anything - it just means the desk can see it and ask.
+    const flag = r.flagged ? ' <span class="chip chip--red" title="' + F.esc(flagText(r)) + '">!</span>' : '';
+
     return '<div class="runner-row" data-runner="' + r.id + '" ' + (r.trip ? 'data-trip="' + r.trip._id + '"' : '') + '>' +
       '<div class="runner-row__av">' + F.initials(r.name) + '</div>' +
-      '<div class="runner-row__meta"><b>' + F.esc(r.name) + '</b><span>' + line + '</span></div>' +
+      '<div class="runner-row__meta"><b>' + F.esc(r.name) + flag + '</b><span>' + line + '</span></div>' +
       '<div style="text-align:right"><span class="dot ' + dot + '"></span>' +
       '<div style="font-size:11px;color:var(--muted)">' + (r.lastSeenAt ? F.ago(r.lastSeenAt) : 'no ping') + '</div></div></div>';
+  }
+
+  function flagText(r) {
+    if (!r.integrity) return '';
+    const on = [];
+    if (r.integrity.vpn) on.push('VPN is on');
+    if (r.integrity.mockLocation) on.push('fake GPS app detected');
+    if (r.integrity.rooted) on.push('phone is rooted');
+    return on.join(', ');
   }
 
   function paintDock() {

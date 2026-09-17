@@ -6,5 +6,20 @@
         <item name="colorAccent">@color/crimson</item>
         <item name="android:windowBackground">@color/mist</item>
         <item name="android:textColorPrimary">@color/ink</item>
+        <item name="android:windowAnimationStyle">@style/WindowAnim</item>
+    </style>
+
+    <!-- Activities slide in rather than snap, so moving between screens feels connected. -->
+    <style name="WindowAnim" parent="@android:style/Animation.Activity">
+        <item name="android:activityOpenEnterAnimation">@anim/slide_in</item>
+        <item name="android:activityOpenExitAnimation">@anim/hold</item>
+        <item name="android:activityCloseEnterAnimation">@anim/hold</item>
+        <item name="android:activityCloseExitAnimation">@anim/slide_out</item>
+    </style>
+
+    <!-- The alarm screen must appear instantly and cover everything. -->
+    <style name="AlertTheme" parent="Theme.AppCompat.NoActionBar">
+        <item name="android:windowBackground">@color/ink_deep</item>
+        <item name="android:windowAnimationStyle">@null</item>
     </style>
 </resources>

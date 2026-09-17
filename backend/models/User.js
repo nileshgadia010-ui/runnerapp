@@ -29,6 +29,18 @@ const userSchema = new mongoose.Schema({
   lastSeenAt: Date,
   appVersion: String,
 
+  // Tamper signals reported by the app. These are hints, not proof - a determined person
+  // can defeat any client side check - but they let the desk see who is worth asking about.
+  integrity: {
+    vpn: { type: Boolean, default: false },
+    mockLocation: { type: Boolean, default: false },
+    rooted: { type: Boolean, default: false },
+    devMode: { type: Boolean, default: false },
+    at: Date,
+    lastFlaggedAt: Date,
+    flagCount: { type: Number, default: 0 }
+  },
+
   active: { type: Boolean, default: true }
 }, { timestamps: true });
 
@@ -43,7 +55,7 @@ userSchema.methods.publicJSON = function () {
     id: this._id, name: this.name, username: this.username, role: this.role,
     empCode: this.empCode, phone: this.phone, vehicleNo: this.vehicleNo, branch: this.branch,
     dutyState: this.dutyState, activeTrip: this.activeTrip, lastLocation: this.lastLocation,
-    lastSeenAt: this.lastSeenAt, active: this.active
+    lastSeenAt: this.lastSeenAt, active: this.active, integrity: this.integrity
   };
 };
 

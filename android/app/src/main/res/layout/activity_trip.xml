@@ -112,6 +112,32 @@
                 android:textColor="@color/cobalt"
                 android:textSize="13sp" />
 
+            <!-- How far the next stop is, from the runner's last known position. -->
+            <TextView
+                android:id="@+id/tDistance"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/card_flat"
+                android:padding="12dp"
+                android:textColor="@color/ink"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
+
+            <!-- Shown when the phone has no data, so the runner keeps working instead of waiting. -->
+            <TextView
+                android:id="@+id/tOffline"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/banner_offline"
+                android:padding="12dp"
+                android:textColor="@color/ink"
+                android:textSize="13sp"
+                android:lineSpacingExtra="2dp"
+                android:visibility="gone" />
+
             <!-- patient -->
             <LinearLayout
                 android:layout_width="match_parent"
@@ -262,5 +288,7 @@
         android:text="Next step"
         android:textAllCaps="false"
         android:textColor="#FFFFFF"
-        android:textSize="17sp" />
+        android:textSize="17sp"
+        android:textStyle="bold"
+        android:stateListAnimator="@null" />
 </LinearLayout>

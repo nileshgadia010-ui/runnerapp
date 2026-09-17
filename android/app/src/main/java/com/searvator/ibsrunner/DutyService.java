@@ -34,10 +34,13 @@ import org.json.JSONObject;
 /**
  * Runs the whole time the runner is punched in.
  *
- *  - keeps a GPS fix and pushes it to the server every few seconds
+ *  - keeps a GPS fix and pushes it to the server, batching whatever the network refused
+ *  - drains the offline action queue the moment data comes back
  *  - asks the server every few seconds whether a new job has been assigned
- *  - when a job arrives it plays an alarm on the ALARM stream, so it is heard
- *    even if the phone is on silent, and throws up a full screen alert
+ *  - when a job arrives it plays an alarm on the ALARM stream, so it is heard even if the
+ *    phone is on silent, and throws up a full screen alert that keeps ringing until the
+ *    runner accepts or declines
+ *  - reports VPN / fake-GPS / root signals so the desk can see them
  */
 public class DutyService extends Service {
 
@@ -51,21 +54,28 @@ public class DutyService extends Service {
     private static final int NOTE_DUTY = 101;
     private static final int NOTE_JOB = 102;
 
+    /** Latest fix, readable by the activities without asking the system again. */
+    private static volatile Location lastFix = null;
+    public static Location fix() { return lastFix; }
+
     private Prefs prefs;
     private Api api;
+    private SyncQueue queue;
     private LocationManager lm;
-    private Location last;
     private MediaPlayer player;
     private Vibrator vibrator;
     private PowerManager.WakeLock wake;
+    private AudioManager audio;
 
     private final Handler loop = new Handler(Looper.getMainLooper());
     private long lastPingAt = 0;
+    private long lastIntegrityAt = 0;
     private String ringingTripId = null;
+    private boolean alarmPlaying = false;
     private boolean running = false;
 
     private final LocationListener listener = new LocationListener() {
-        @Override public void onLocationChanged(Location location) { last = location; }
+        @Override public void onLocationChanged(Location location) { lastFix = location; }
         @Override public void onProviderEnabled(String p) { }
         @Override public void onProviderDisabled(String p) { }
         @Override public void onStatusChanged(String p, int s, android.os.Bundle e) { }
@@ -76,8 +86,11 @@ public class DutyService extends Service {
         super.onCreate();
         prefs = new Prefs(this);
         api = new Api(this);
+        queue = new SyncQueue(this);
+        Clock.restore(this);
         lm = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
         vibrator = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
+        audio = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
         createChannels();
     }
 
@@ -119,7 +132,7 @@ public class DutyService extends Service {
         try {
             Location gps = lm.getLastKnownLocation(LocationManager.GPS_PROVIDER);
             Location net = lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
-            last = gps != null ? gps : net;
+            if (lastFix == null) lastFix = gps != null ? gps : net;
         } catch (Exception ignored) { }
 
         if (wake == null) {
@@ -136,8 +149,6 @@ public class DutyService extends Service {
         loop.removeCallbacksAndMessages(null);
     }
 
-    public Location lastLocation() { return last; }
-
     /* ---------------- the loop ---------------- */
 
     private final Runnable tick = new Runnable() {
@@ -151,22 +162,31 @@ public class DutyService extends Service {
     private void cycle() {
         if (!prefs.signedIn()) return;
 
-        // 1. push location (batched, so a dead network does not lose the trail)
         long now = System.currentTimeMillis();
-        if (last != null && now - lastPingAt >= prefs.pingSeconds() * 1000L) {
+
+        // 1. Location. Always queued first, then flushed - so a dead network loses nothing.
+        if (lastFix != null && now - lastPingAt >= prefs.pingSeconds() * 1000L) {
             lastPingAt = now;
-            queuePing(last);
-            flushQueue();
+            queuePing(lastFix);
+        }
+        if (api.online()) {
+            flushPings();
+            flushActions();
         }
 
-        // 2. ask for work
+        // 2. Environment signals, every two minutes. Cheap, and worth the record.
+        if (now - lastIntegrityAt > 120000 && api.online()) {
+            lastIntegrityAt = now;
+            reportIntegrity();
+        }
+
+        // 3. Ask for work.
         JSONObject poll = api.getSync("/api/runner/poll");
-        if (poll == null) return;
+        if (poll == null || poll.has("__error")) return;
+        prefs.setLastPoll(poll.toString());
 
-        if (poll.has("config")) {
-            JSONObject cfg = poll.optJSONObject("config");
-            if (cfg != null) prefs.setIntervals(cfg.optInt("pollInterval", 5), cfg.optInt("pingInterval", 20));
-        }
+        JSONObject cfg = poll.optJSONObject("config");
+        if (cfg != null) prefs.setIntervals(cfg.optInt("pollInterval", 5), cfg.optInt("pingInterval", 20));
 
         JSONObject trip = poll.optJSONObject("trip");
         boolean ring = poll.optBoolean("ring", false);
@@ -177,44 +197,86 @@ public class DutyService extends Service {
         sendBroadcast(b);
 
         if (ring && trip != null) {
-            String tripId = trip.optString("id");
-            if (!tripId.equals(ringingTripId)) {
+            final String tripId = trip.optString("id");
+            // New job, or the same job still unanswered and the alarm has somehow stopped
+            // (a phone can kill a MediaPlayer). Either way: ring.
+            if (!tripId.equals(ringingTripId) || !alarmPlaying) {
                 ringingTripId = tripId;
                 new Handler(Looper.getMainLooper()).post(() -> raiseAlarm(trip));
             }
         } else if (!ring) {
             ringingTripId = null;
+            if (alarmPlaying) stopAlarm();
         }
 
         String duty = poll.optString("dutyState", "");
         String head = trip != null ? trip.optString("headline") + " - " + trip.optString("statusLabel") : "No job right now";
+        int pending = queue.size();
+        if (pending > 0) head = head + "  (" + pending + " waiting to upload)";
         updateDutyNotification("AVAILABLE".equals(duty) ? "On duty, free" : "On duty", head);
     }
 
+    /* ---------------- queues ---------------- */
+
     private void queuePing(Location l) {
         try {
-            JSONArray q = new JSONArray(prefs.queue());
+            JSONArray q = new JSONArray(prefs.pingQueue());
             JSONObject p = new JSONObject();
             p.put("lat", l.getLatitude());
             p.put("lng", l.getLongitude());
             p.put("accuracy", l.getAccuracy());
             p.put("speed", l.getSpeed());
             p.put("battery", batteryLevel());
-            p.put("at", isoNow(l.getTime()));
+            p.put("mock", Guard.isMock(l));
+            p.put("at", Clock.iso(l.getTime()));
             q.put(p);
             // Keep at most 500 offline points, drop the oldest.
             while (q.length() > 500) q.remove(0);
-            prefs.setQueue(q.toString());
+            prefs.setPingQueue(q.toString());
         } catch (Exception ignored) { }
     }
 
-    private void flushQueue() {
+    private void flushPings() {
         try {
-            JSONArray q = new JSONArray(prefs.queue());
+            JSONArray q = new JSONArray(prefs.pingQueue());
             if (q.length() == 0) return;
-            JSONObject body = new JSONObject().put("pings", q);
-            JSONObject res = api.postSync("/api/runner/ping", body);
-            if (res != null && !res.has("__error")) prefs.setQueue("[]");
+            JSONObject res = api.postSync("/api/runner/ping", new JSONObject().put("pings", q));
+            if (res != null && !res.has("__error")) prefs.setPingQueue("[]");
+        } catch (Exception ignored) { }
+    }
+
+    /**
+     * Sends everything the runner did while the phone had no data. The server applies each
+     * entry with the time it originally happened and answers per entry, so a single bad
+     * action never blocks the rest of the queue.
+     */
+    private void flushActions() {
+        try {
+            JSONArray items = queue.read();
+            if (items.length() == 0) return;
+            JSONObject res = api.postSync("/api/runner/sync", new JSONObject().put("items", items));
+            if (res == null || res.has("__error")) return;
+            JSONArray results = res.optJSONArray("results");
+            if (results != null) {
+                queue.removeIds(results);
+                Intent b = new Intent(BROADCAST_UPDATE);
+                b.setPackage(getPackageName());
+                b.putExtra("synced", results.length());
+                sendBroadcast(b);
+            }
+        } catch (Exception ignored) { }
+    }
+
+    private void reportIntegrity() {
+        try {
+            Guard.Flags f = Guard.scan(this, lastFix);
+            JSONObject body = new JSONObject();
+            body.put("vpn", f.vpn);
+            body.put("mockLocation", f.mockLocation);
+            body.put("rooted", f.rooted);
+            body.put("devMode", f.devMode);
+            body.put("appVersion", BuildConfig.VERSION_NAME);
+            api.postSync("/api/runner/integrity", body);
         } catch (Exception ignored) { }
     }
 
@@ -223,12 +285,6 @@ public class DutyService extends Service {
             BatteryManager bm = (BatteryManager) getSystemService(Context.BATTERY_SERVICE);
             return bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY);
         } catch (Exception e) { return 0; }
-    }
-
-    private static String isoNow(long ms) {
-        java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US);
-        f.setTimeZone(java.util.TimeZone.getTimeZone("UTC"));
-        return f.format(new java.util.Date(ms));
     }
 
     /* ---------------- the alarm ---------------- */
@@ -244,7 +300,8 @@ public class DutyService extends Service {
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
         String patient = trip.optString("patientName", "");
-        String where = trip.optJSONObject("pickup") != null ? trip.optJSONObject("pickup").optString("name", "") : "";
+        JSONObject target = trip.optJSONObject("target");
+        String where = target != null ? target.optString("name", "") : "";
 
         Notification n = new NotificationCompat.Builder(this, CH_JOB)
                 .setSmallIcon(android.R.drawable.ic_dialog_alert)
@@ -254,7 +311,7 @@ public class DutyService extends Service {
                 .setCategory(NotificationCompat.CATEGORY_CALL)
                 .setFullScreenIntent(pi, true)
                 .setContentIntent(pi)
-                .setAutoCancel(true)
+                .setAutoCancel(false)
                 .setOngoing(true)
                 .build();
 
@@ -265,28 +322,40 @@ public class DutyService extends Service {
         try { startActivity(full); } catch (Exception ignored) { }
     }
 
+    /**
+     * Why this rings on a silent phone: the sound plays on the ALARM stream, which Android
+     * does not mute in silent mode, and the volume is pushed to maximum first. The channel
+     * also asks to bypass Do Not Disturb. A looping vibration runs alongside in case the
+     * runner keeps the phone in a pocket on a noisy road.
+     */
     private void playAlarm() {
         stopAlarm();
         try {
-            AudioManager am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
-            // The alarm stream is not muted by silent mode, so raise it to full.
-            am.setStreamVolume(AudioManager.STREAM_ALARM, am.getStreamMaxVolume(AudioManager.STREAM_ALARM), 0);
+            audio.setStreamVolume(AudioManager.STREAM_ALARM,
+                    audio.getStreamMaxVolume(AudioManager.STREAM_ALARM), 0);
+
+            android.net.Uri tone = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
+            if (tone == null) tone = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE);
+            if (tone == null) tone = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
 
             player = new MediaPlayer();
             player.setAudioAttributes(new AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_ALARM)
                     .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                     .build());
-            player.setDataSource(this, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM));
+            player.setDataSource(this, tone);
             player.setLooping(true);
+            player.setVolume(1f, 1f);
             player.prepare();
             player.start();
+            alarmPlaying = true;
         } catch (Exception ignored) { }
 
         try {
-            long[] pattern = {0, 700, 500};
+            long[] pattern = {0, 800, 400};
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                vibrator.vibrate(VibrationEffect.createWaveform(pattern, 0));
+                vibrator.vibrate(VibrationEffect.createWaveform(pattern, 0),
+                        new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).build());
             } else {
                 vibrator.vibrate(pattern, 0);
             }
@@ -294,6 +363,7 @@ public class DutyService extends Service {
     }
 
     public void stopAlarm() {
+        alarmPlaying = false;
         try { if (player != null) { player.stop(); player.release(); } } catch (Exception ignored) { }
         player = null;
         try { vibrator.cancel(); } catch (Exception ignored) { }
@@ -311,16 +381,19 @@ public class DutyService extends Service {
 
         NotificationChannel duty = new NotificationChannel(CH_DUTY, "Duty status", NotificationManager.IMPORTANCE_LOW);
         duty.setDescription("Shows that location sharing is on while you are punched in");
+        duty.setShowBadge(false);
         nm.createNotificationChannel(duty);
 
         NotificationChannel job = new NotificationChannel(CH_JOB, "New job alarm", NotificationManager.IMPORTANCE_HIGH);
         job.setDescription("Rings when the desk assigns you a job");
         job.setBypassDnd(true);
         job.enableVibration(true);
+        job.setVibrationPattern(new long[]{0, 800, 400});
+        job.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
         job.setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM),
-                new android.media.AudioAttributes.Builder()
-                        .setUsage(android.media.AudioAttributes.USAGE_ALARM)
-                        .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION).build());
+                new AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ALARM)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build());
         nm.createNotificationChannel(job);
     }
 

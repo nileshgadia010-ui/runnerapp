@@ -230,8 +230,10 @@ const Masters = (function () {
       document.getElementById('attApply').addEventListener('click', loadAttendance);
       document.getElementById('attExport').addEventListener('click', () =>
         UI.csv('ibs-attendance.csv',
-          ['Date', 'Runner', 'Code', 'First in', 'Last out', 'Sessions', 'Hours', 'Trips', 'Punch in place'],
-          attRows.map(r => [r.date, r.runner, r.empCode, F.time(r.firstIn), F.time(r.lastOut), r.sessions, r.hours, r.tripsDone, r.punchInPlace])));
+          ['Date', 'Runner', 'Code', 'First in', 'Last out', 'Sessions', 'Hours', 'Trips',
+           'Start meter', 'End meter', 'Meter km', 'GPS km', 'Gap km', 'Punch in place'],
+          attRows.map(r => [r.date, r.runner, r.empCode, F.time(r.firstIn), F.time(r.lastOut), r.sessions, r.hours, r.tripsDone,
+            r.startOdo, r.endOdo, r.odoKm, r.gpsKm, r.odoGap === null ? '' : r.odoGap, r.punchInPlace])));
     }
     await loadAttendance();
   }
@@ -243,7 +245,7 @@ const Masters = (function () {
     });
     attRows = data.rows;
     const host = document.getElementById('attRows');
-    if (!attRows.length) { host.innerHTML = UI.emptyRow(8, 'No punches in this range'); return; }
+    if (!attRows.length) { host.innerHTML = UI.emptyRow(11, 'No punches in this range'); return; }
 
     host.innerHTML = attRows.map(r =>
       '<tr><td>' + F.date(r.date) + '</td>' +
@@ -253,7 +255,29 @@ const Masters = (function () {
       '<td class="num">' + r.sessions + '</td>' +
       '<td class="num">' + r.hours + '</td>' +
       '<td class="num">' + r.tripsDone + '</td>' +
+      '<td class="num">' + odoCell(r) + '</td>' +
+      '<td class="num">' + (r.gpsKm || 0) + '</td>' +
+      '<td>' + photoCell(r) + '</td>' +
       '<td style="font-size:12px;color:var(--muted)">' + F.esc(r.punchInPlace) + '</td></tr>').join('');
+  }
+
+  // Meter kilometres, with the reading range underneath and a flag when the meter and the
+  // GPS trail disagree badly. A gap of a few km is normal (GPS smooths corners and loses
+  // signal indoors); a gap of 15 km or more is a row someone should ask about.
+  function odoCell(r) {
+    if (!r.odoKm) return '<span style="color:var(--muted)">-</span>';
+    const suspect = r.odoGap !== null && Math.abs(r.odoGap) >= 15;
+    return '<b' + (suspect ? ' style="color:var(--crimson)"' : '') + '>' + r.odoKm + '</b>' +
+      '<div style="font-size:11px;color:var(--muted);font-weight:400">' + r.startOdo + ' &rarr; ' + r.endOdo + '</div>' +
+      (suspect ? '<div style="font-size:11px;color:var(--crimson)">' + (r.odoGap > 0 ? '+' : '') + r.odoGap + ' km vs GPS</div>' : '');
+  }
+
+  function photoCell(r) {
+    const links = [];
+    if (r.startOdoPhoto) links.push('<a href="' + r.startOdoPhoto + '" target="_blank">start</a>');
+    if (r.endOdoPhoto) links.push('<a href="' + r.endOdoPhoto + '" target="_blank">end</a>');
+    return links.length ? '<span style="font-size:12px">' + links.join(' &middot; ') + '</span>'
+      : '<span style="font-size:12px;color:var(--muted)">-</span>';
   }
 
   return { bootRunners, bootPlaces, bootAttendance };

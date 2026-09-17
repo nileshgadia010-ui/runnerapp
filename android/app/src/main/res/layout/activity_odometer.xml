@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Odometer capture. Shown before the first punch in of the day and before the last punch
+     out. The photo of the meter is what makes the reading checkable later. -->
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/mist"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="20dp"
+        android:paddingTop="44dp">
+
+        <TextView
+            android:id="@+id/odoHead"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Bike meter reading"
+            android:textColor="@color/ink"
+            android:textSize="26sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/odoSub"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="Take a clear photo of the meter, then type the number you see."
+            android:textColor="@color/ink_soft"
+            android:textSize="14sp"
+            android:lineSpacingExtra="4dp" />
+
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="220dp"
+            android:layout_marginTop="20dp"
+            android:background="@drawable/card_flat">
+
+            <ImageView
+                android:id="@+id/odoPreview"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:scaleType="centerCrop"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/odoPlaceholder"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:text="No photo yet"
+                android:textColor="@color/muted"
+                android:textSize="14sp" />
+        </FrameLayout>
+
+        <Button
+            android:id="@+id/odoPhotoBtn"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/btn_cobalt"
+            android:text="TAKE METER PHOTO"
+            android:textColor="@color/paper"
+            android:textSize="15sp"
+            android:letterSpacing="0.05"
+            android:textStyle="bold"
+            android:stateListAnimator="@null" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="22dp"
+            android:layout_marginBottom="8dp"
+            android:text="METER READING (KM)"
+            android:textColor="@color/muted"
+            android:textSize="11sp"
+            android:letterSpacing="0.12"
+            android:textStyle="bold" />
+
+        <EditText
+            android:id="@+id/odoValue"
+            android:layout_width="match_parent"
+            android:layout_height="64dp"
+            android:background="@drawable/field_bg"
+            android:paddingLeft="16dp"
+            android:paddingRight="16dp"
+            android:hint="e.g. 42817"
+            android:inputType="number"
+            android:textColor="@color/ink"
+            android:textSize="26sp"
+            android:textStyle="bold"
+            android:singleLine="true" />
+
+        <TextView
+            android:id="@+id/odoHint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:textColor="@color/muted"
+            android:textSize="13sp"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/odoError"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/chip_red"
+            android:padding="12dp"
+            android:textColor="@color/crimson"
+            android:textSize="13sp"
+            android:visibility="gone" />
+
+        <Button
+            android:id="@+id/odoSaveBtn"
+            android:layout_width="match_parent"
+            android:layout_height="58dp"
+            android:layout_marginTop="22dp"
+            android:background="@drawable/btn_red"
+            android:text="CONTINUE"
+            android:textColor="@color/paper"
+            android:textSize="16sp"
+            android:letterSpacing="0.06"
+            android:textStyle="bold"
+            android:stateListAnimator="@null" />
+
+        <TextView
+            android:id="@+id/odoCancel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:padding="12dp"
+            android:gravity="center"
+            android:text="Cancel"
+            android:textColor="@color/muted"
+            android:textSize="14sp" />
+    </LinearLayout>
+</ScrollView>

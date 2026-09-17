@@ -15,7 +15,12 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.CALL_PHONE" />
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <!-- The odometer and handover photos are the only camera use; a phone without an
+         autofocus camera is still fine, so neither feature is declared as required. -->
     <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
 
     <application
         android:allowBackup="true"
@@ -35,6 +40,7 @@
 
         <activity android:name=".HomeActivity" android:exported="false" android:screenOrientation="portrait" />
         <activity android:name=".TripActivity" android:exported="false" android:screenOrientation="portrait" />
+        <activity android:name=".OdometerActivity" android:exported="false" android:screenOrientation="portrait" />
 
         <!-- The alarm screen. It is allowed to appear over the lock screen and wake the phone. -->
         <activity
