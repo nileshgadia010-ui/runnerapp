@@ -55,6 +55,16 @@ const Main = (function () {
   };
 
   function applyRights() {
+    // Safety net. If the rights data would hide every screen, something upstream is wrong -
+    // a stale copy, a bad save, a half-applied migration. Showing a dashboard with one dead
+    // link is worse than showing everything and letting the server refuse a call, so in that
+    // case we hide nothing and say so in the console.
+    const visible = Object.keys(PAGE_RIGHT).filter(p => API.can(PAGE_RIGHT[p]));
+    if (!visible.length && (API.user() || {}).role !== 'runner') {
+      console.warn('[rights] every screen came back denied - showing all and letting the server decide');
+      return;
+    }
+
     Object.keys(PAGE_RIGHT).forEach(page => {
       if (API.can(PAGE_RIGHT[page])) return;
       const link = document.querySelector('.rail__link[data-page="' + page + '"]');

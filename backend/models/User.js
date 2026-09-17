@@ -34,14 +34,19 @@ const userSchema = new mongoose.Schema({
   // What this account is allowed to do. Role sets a sensible default; these switches let the
   // office widen or narrow one person without inventing a new role. An admin always has
   // everything, so a locked-out office is impossible.
+  //
+  // These deliberately have NO default. A default of false would be written onto every
+  // existing document by Mongoose, and an explicit false always beats the role default -
+  // which would silently strip every coordinator of every right the moment this field was
+  // added. Undefined means "not decided for this person, use the role's normal set".
   rights: {
-    manageStaff:    { type: Boolean, default: false },   // add and edit user accounts
-    managePlaces:   { type: Boolean, default: false },   // hospitals, centres, geofences
-    createCases:    { type: Boolean, default: false },
-    assignTrips:    { type: Boolean, default: false },   // assign, reassign, re-ping, cancel
-    overrideStages: { type: Boolean, default: false },   // move a stage on the runner's behalf
-    editSettings:   { type: Boolean, default: false },   // crossmatch, close, cancel a case
-    viewReports:    { type: Boolean, default: false }
+    manageStaff:    { type: Boolean },   // add and edit user accounts
+    managePlaces:   { type: Boolean },   // hospitals, centres, geofences
+    createCases:    { type: Boolean },
+    assignTrips:    { type: Boolean },   // assign, reassign, re-ping, cancel
+    overrideStages: { type: Boolean },   // move a stage on the runner's behalf
+    editSettings:   { type: Boolean },   // crossmatch, close, cancel a case
+    viewReports:    { type: Boolean }
   },
 
   integrity: {
@@ -96,9 +101,17 @@ userSchema.statics.defaultRights = function (role) {
 // An admin is never limited by a stored switch - that is the safety net against somebody
 // accidentally saving themselves out of the system.
 userSchema.methods.effectiveRights = function () {
-  if (this.role === 'admin') return ROLE_RIGHTS.admin;
+  if (this.role === 'admin') return Object.assign({}, ROLE_RIGHTS.admin);
+
+  const out = Object.assign({}, ROLE_RIGHTS[this.role] || ROLE_RIGHTS.runner);
   const stored = this.rights ? (this.rights.toObject ? this.rights.toObject() : this.rights) : {};
-  return Object.assign({}, ROLE_RIGHTS[this.role] || ROLE_RIGHTS.runner, stored);
+
+  // Only a real true/false counts as a decision. Anything undefined or null leaves the
+  // role default in place - copying it blindly is what wiped everyone's access before.
+  Object.keys(out).forEach(k => {
+    if (typeof stored[k] === 'boolean') out[k] = stored[k];
+  });
+  return out;
 };
 
 userSchema.methods.can = function (right) {

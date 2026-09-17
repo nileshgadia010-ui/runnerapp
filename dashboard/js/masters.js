@@ -67,6 +67,8 @@ const Masters = (function () {
     UI.openDrawer(u ? 'Edit ' + u.name : 'Add staff', body,
       '<button class="btn btn--ghost" onclick="UI.closeDrawer()">Cancel</button><button class="btn btn--red" id="sSave">Save</button>');
 
+    wireRoleReset();
+
     document.getElementById('sSave').addEventListener('click', async () => {
       const payload = {
         name: document.getElementById('sName').value.trim(),
@@ -237,19 +239,45 @@ const Masters = (function () {
     ['viewReports',    'Open the reports and export data']
   ];
 
-  function rightsBlock(u) {
-    if (!API.can('manageStaff') || (API.user() || {}).role !== 'admin') return '';
+  // What each role normally gets. Mirrors ROLE_RIGHTS on the server; kept here only so a
+  // brand new account starts with sensible boxes already ticked instead of all empty.
+  const ROLE_DEFAULTS = {
+    admin:       ['manageStaff', 'managePlaces', 'createCases', 'assignTrips', 'overrideStages', 'editSettings', 'viewReports'],
+    coordinator: ['managePlaces', 'createCases', 'assignTrips', 'overrideStages', 'editSettings', 'viewReports'],
+    runner:      []
+  };
 
+  function rightsBlock(u) {
+    if ((API.user() || {}).role !== 'admin') return '';
+
+    // For an existing person the server sends what they can actually do today. For a new one
+    // we pre-tick the role's normal set - saving a screen of empty boxes would otherwise
+    // create an account that can do nothing at all.
+    const role = u ? u.role : 'runner';
     const current = (u && u.rights) || {};
-    // A new account starts from what its role normally gets; the admin then trims or widens.
+    const isOn = key => u ? !!current[key] : ROLE_DEFAULTS[role].indexOf(key) >= 0;
+
     const boxes = RIGHTS.map(([key, label]) =>
       '<label class="right-row"><input type="checkbox" data-right="' + key + '" ' +
-      (u ? (current[key] ? 'checked' : '') : '') + '><span>' + label + '</span></label>').join('');
+      (isOn(key) ? 'checked' : '') + '><span>' + label + '</span></label>').join('');
 
     return '<div class="field"><label>What this person can do</label>' +
       '<div class="rights-box" id="sRights">' + boxes + '</div>' +
       '<small style="color:var(--muted);font-size:11px">An admin always has every right, whatever is ticked here. ' +
-      'Change the role above and these reset to that role\'s normal set.</small></div>';
+      'Changing the role below re-ticks these to that role\'s normal set.</small></div>';
+  }
+
+  // Keep the boxes honest when the role changes mid-edit.
+  function wireRoleReset() {
+    const role = document.getElementById('sRole');
+    const host = document.getElementById('sRights');
+    if (!role || !host) return;
+    role.addEventListener('change', () => {
+      const set = ROLE_DEFAULTS[role.value] || [];
+      host.querySelectorAll('[data-right]').forEach(cb => {
+        cb.checked = set.indexOf(cb.dataset.right) >= 0;
+      });
+    });
   }
 
   function readRights() {
