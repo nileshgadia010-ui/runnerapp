@@ -4,7 +4,7 @@ const Trip = require('../models/Trip');
 const Attendance = require('../models/Attendance');
 const { roadKm, etaMinutes } = require('../services/geo');
 const { ISTDate } = require('../services/dispatch');
-const { auth, allow } = require('../middleware/auth');
+const { auth, allow, can } = require('../middleware/auth');
 
 router.use(auth);
 
@@ -76,26 +76,89 @@ function toTarget(runner, trip) {
   return { targetName: target.name, targetKm: km, targetEtaMin: etaMinutes(km) };
 }
 
-router.post('/', allow('admin', 'coordinator'), async (req, res) => {
+const RIGHT_KEYS = ['manageStaff', 'managePlaces', 'createCases', 'assignTrips', 'overrideStages', 'editSettings', 'viewReports'];
+
+// Only somebody with manageStaff can create or change accounts, and only an admin can hand
+// out rights. That split matters: a coordinator can add a new runner without being able to
+// quietly give herself the reports screen.
+router.post('/', can('manageStaff'), async (req, res) => {
   const { name, username, password, role, empCode, phone, vehicleNo, branch } = req.body || {};
   if (!name || !username || !password) return res.status(400).json({ error: 'Name, user ID and password are required' });
-  if (await User.findOne({ username: String(username).toLowerCase().trim() })) {
+
+  const clean = normaliseUsername(username);
+  if (!clean) return res.status(400).json({ error: 'User ID can only use letters, numbers, dot, dash and underscore' });
+  if (await User.findOne({ username: clean })) {
     return res.status(409).json({ error: 'That user ID is already taken' });
   }
-  const u = new User({ name, username: String(username).toLowerCase().trim(), role: role || 'runner', empCode, phone, vehicleNo, branch });
+
+  const wanted = role || 'runner';
+  if (wanted === 'admin' && req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Only an admin can create another admin' });
+  }
+
+  const u = new User({ name, username: clean, role: wanted, empCode, phone, vehicleNo, branch });
+  u.rights = User.defaultRights(wanted);
+  applyRights(u, req);
   u.setPassword(password);
   await u.save();
   res.status(201).json(u.publicJSON());
 });
 
-router.put('/:id', allow('admin', 'coordinator'), async (req, res) => {
+// User IDs are typed by runners with one thumb, so keep them simple and case-insensitive.
+function normaliseUsername(raw) {
+  const v = String(raw || '').toLowerCase().trim();
+  return /^[a-z0-9._-]{3,30}$/.test(v) ? v : null;
+}
+
+// Rights are only writable by an admin. A non-admin editing a user leaves them untouched.
+function applyRights(u, req) {
+  if (req.user.role !== 'admin' || !req.body.rights) return;
+  const next = Object.assign({}, User.defaultRights(u.role));
+  RIGHT_KEYS.forEach(k => {
+    if (req.body.rights[k] !== undefined) next[k] = !!req.body.rights[k];
+  });
+  u.rights = next;
+}
+
+router.put('/:id', can('manageStaff'), async (req, res) => {
   const u = await User.findById(req.params.id);
   if (!u) return res.status(404).json({ error: 'Staff member not found' });
 
-  ['name', 'empCode', 'phone', 'vehicleNo', 'branch', 'role'].forEach(f => {
+  // The app user ID used to be fixed for life, which made a typo permanent. It can now be
+  // changed - the account keeps its history because everything is linked by the record id,
+  // not by the login name. The runner simply signs in with the new ID next time.
+  if (req.body.username !== undefined && req.body.username !== u.username) {
+    const clean = normaliseUsername(req.body.username);
+    if (!clean) return res.status(400).json({ error: 'User ID can only use letters, numbers, dot, dash and underscore' });
+    const taken = await User.findOne({ username: clean, _id: { $ne: u._id } });
+    if (taken) return res.status(409).json({ error: 'That user ID is already taken' });
+    u.username = clean;
+  }
+
+  ['name', 'empCode', 'phone', 'vehicleNo', 'branch'].forEach(f => {
     if (req.body[f] !== undefined) u[f] = req.body[f];
   });
-  if (req.body.active !== undefined) u.active = !!req.body.active;
+
+  if (req.body.role !== undefined && req.body.role !== u.role) {
+    if (req.body.role === 'admin' && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Only an admin can make someone an admin' });
+    }
+    if (u.role === 'admin' && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Only an admin can change an admin account' });
+    }
+    u.role = req.body.role;
+    u.rights = User.defaultRights(u.role);   // a new role starts from that role's defaults
+  }
+
+  // Nobody can switch off or demote their own account - that is how an office locks itself out.
+  if (String(u._id) === String(req.user._id)) {
+    if (req.body.active === false) return res.status(400).json({ error: 'You cannot switch off your own account' });
+    if (req.body.rights) return res.status(400).json({ error: 'You cannot change your own rights' });
+  } else if (req.body.active !== undefined) {
+    u.active = !!req.body.active;
+  }
+
+  applyRights(u, req);
   if (req.body.password) u.setPassword(req.body.password);
 
   await u.save();

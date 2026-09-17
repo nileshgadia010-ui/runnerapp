@@ -2,7 +2,7 @@ const router = require('express').Router();
 const Trip = require('../models/Trip');
 const User = require('../models/User');
 const LocationPing = require('../models/LocationPing');
-const { auth, allow } = require('../middleware/auth');
+const { auth, allow, can } = require('../middleware/auth');
 const { tripTat } = require('../services/tat');
 const { assignTrip, applyStage } = require('../services/dispatch');
 
@@ -43,7 +43,7 @@ router.get('/:id/route', async (req, res) => {
   res.json(pings);
 });
 
-router.post('/assign', allow('admin', 'coordinator'), async (req, res, next) => {
+router.post('/assign', can('assignTrips'), async (req, res, next) => {
   try {
     const { caseId, type, runnerId } = req.body || {};
     const trip = await assignTrip({ caseId, type, runnerId, assignedBy: req.user._id });
@@ -52,7 +52,7 @@ router.post('/assign', allow('admin', 'coordinator'), async (req, res, next) => 
 });
 
 // Take the job off one runner and hand it to another - the new runner's phone rings.
-router.post('/:id/reassign', allow('admin', 'coordinator'), async (req, res, next) => {
+router.post('/:id/reassign', can('assignTrips'), async (req, res, next) => {
   try {
     const trip = await Trip.findById(req.params.id);
     if (!trip) return res.status(404).json({ error: 'Trip not found' });
@@ -65,7 +65,7 @@ router.post('/:id/reassign', allow('admin', 'coordinator'), async (req, res, nex
   } catch (e) { next(e); }
 });
 
-router.post('/:id/cancel', allow('admin', 'coordinator'), async (req, res, next) => {
+router.post('/:id/cancel', can('assignTrips'), async (req, res, next) => {
   try {
     const trip = await Trip.findById(req.params.id);
     if (!trip) return res.status(404).json({ error: 'Trip not found' });
@@ -75,7 +75,7 @@ router.post('/:id/cancel', allow('admin', 'coordinator'), async (req, res, next)
 });
 
 // Desk override - used when a runner's phone is dead and he reports by call.
-router.post('/:id/stage', allow('admin', 'coordinator'), async (req, res, next) => {
+router.post('/:id/stage', can('overrideStages'), async (req, res, next) => {
   try {
     const trip = await Trip.findById(req.params.id);
     if (!trip) return res.status(404).json({ error: 'Trip not found' });
@@ -85,7 +85,7 @@ router.post('/:id/stage', allow('admin', 'coordinator'), async (req, res, next) 
 });
 
 // Make the phone ring again if the runner missed the first alarm.
-router.post('/:id/reping', allow('admin', 'coordinator'), async (req, res) => {
+router.post('/:id/reping', can('assignTrips'), async (req, res) => {
   const trip = await Trip.findById(req.params.id);
   if (!trip) return res.status(404).json({ error: 'Trip not found' });
   if (trip.status !== 'ASSIGNED') return res.status(400).json({ error: 'The runner has already accepted this job' });

@@ -2,7 +2,7 @@ const router = require('express').Router();
 const Case = require('../models/Case');
 const Trip = require('../models/Trip');
 const { nextNumber } = require('../models/Counter');
-const { auth, allow } = require('../middleware/auth');
+const { auth, allow, can } = require('../middleware/auth');
 const { caseTat } = require('../services/tat');
 const realtime = require('../services/realtime');
 
@@ -46,7 +46,7 @@ router.get('/:id', async (req, res) => {
   res.json({ ...c, trips, tat: caseTat(c, c.sampleTrip, c.deliveryTrip, new Date()) });
 });
 
-router.post('/', allow('admin', 'coordinator'), async (req, res) => {
+router.post('/', can('createCases'), async (req, res) => {
   const b = req.body || {};
   if (!b.patientName || !b.hospital || !b.bloodCenter) {
     return res.status(400).json({ error: 'Patient name, hospital and blood centre are required' });
@@ -61,7 +61,7 @@ router.post('/', allow('admin', 'coordinator'), async (req, res) => {
   res.status(201).json(await Case.findById(kase._id).populate(POP));
 });
 
-router.put('/:id', allow('admin', 'coordinator'), async (req, res) => {
+router.put('/:id', can('createCases'), async (req, res) => {
   const b = { ...req.body };
   delete b.caseNo; delete b.status; delete b.sampleTrip; delete b.deliveryTrip;
   const kase = await Case.findByIdAndUpdate(req.params.id, b, { new: true }).populate(POP);
@@ -70,7 +70,7 @@ router.put('/:id', allow('admin', 'coordinator'), async (req, res) => {
 });
 
 // Crossmatch clock - this is the lab leg of the TAT, between the two runner trips.
-router.post('/:id/crossmatch/start', allow('admin', 'coordinator'), async (req, res) => {
+router.post('/:id/crossmatch/start', can('editSettings'), async (req, res) => {
   const kase = await Case.findById(req.params.id);
   if (!kase) return res.status(404).json({ error: 'Case not found' });
   if (kase.status !== 'SAMPLE_AT_CENTER' && kase.status !== 'CROSSMATCH') {
@@ -84,7 +84,7 @@ router.post('/:id/crossmatch/start', allow('admin', 'coordinator'), async (req, 
   res.json(kase);
 });
 
-router.post('/:id/crossmatch/done', allow('admin', 'coordinator'), async (req, res) => {
+router.post('/:id/crossmatch/done', can('editSettings'), async (req, res) => {
   const kase = await Case.findById(req.params.id);
   if (!kase) return res.status(404).json({ error: 'Case not found' });
   const { result, unitsReady, bagNumbers, remarks } = req.body || {};
@@ -103,7 +103,7 @@ router.post('/:id/crossmatch/done', allow('admin', 'coordinator'), async (req, r
   res.json(kase);
 });
 
-router.post('/:id/close', allow('admin', 'coordinator'), async (req, res) => {
+router.post('/:id/close', can('editSettings'), async (req, res) => {
   const kase = await Case.findById(req.params.id);
   if (!kase) return res.status(404).json({ error: 'Case not found' });
   kase.status = 'CLOSED';
@@ -113,7 +113,7 @@ router.post('/:id/close', allow('admin', 'coordinator'), async (req, res) => {
   res.json(kase);
 });
 
-router.post('/:id/cancel', allow('admin', 'coordinator'), async (req, res) => {
+router.post('/:id/cancel', can('editSettings'), async (req, res) => {
   const kase = await Case.findById(req.params.id);
   if (!kase) return res.status(404).json({ error: 'Case not found' });
   const running = await Trip.findOne({ case: kase._id, status: { $nin: ['COMPLETED', 'REJECTED', 'CANCELLED'] } });

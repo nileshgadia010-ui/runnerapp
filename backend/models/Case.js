@@ -9,7 +9,9 @@ const caseSchema = new mongoose.Schema({
   patientAge: String,
   patientGender: { type: String, enum: ['Male', 'Female', 'Other', ''], default: '' },
   bloodGroup: { type: String, default: '' },
-  component: { type: String, default: 'PRBC' },     // WB / PRBC / FFP / SDP / RDP / CRYO
+  // PCV (packed cell volume), FFP (fresh frozen plasma) and PC (platelet concentrate) are
+  // what this centre issues most; the rest are kept so older cases still read correctly.
+  component: { type: String, default: 'PCV' },      // PCV / FFP / PC / WB / SDP / RDP / CRYO / PRBC
   unitsRequested: { type: Number, default: 1 },
 
   hospital: { type: mongoose.Schema.Types.ObjectId, ref: 'Location', required: true },

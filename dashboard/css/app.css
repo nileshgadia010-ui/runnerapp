@@ -390,6 +390,14 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 /* Moving the marker between two pings should glide, not teleport. */
 .leaflet-marker-icon { transition: transform .6s linear; }
 
+/* Rights checklist in the staff drawer. Plain rows, big tap targets - this is read by
+   someone deciding what a colleague may do, so clarity beats density. */
+.rights-box { display: grid; gap: 2px; border: 1px solid var(--line); border-radius: var(--radius); padding: 6px; }
+.right-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; cursor: pointer; }
+.right-row:hover { background: var(--mist); }
+.right-row input { width: 16px; height: 16px; accent-color: var(--crimson); flex: none; }
+.right-row span { font-size: 13px; color: var(--ink); }
+
 .pin-site { width: 22px; height: 22px; border-radius: 5px; background: #fff; border: 2px solid var(--ink); display: grid; place-items: center; font-size: 11px; }
 .pin-site--center { border-color: var(--crimson); color: var(--crimson); }
 

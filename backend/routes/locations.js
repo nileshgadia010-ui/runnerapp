@@ -1,6 +1,6 @@
 const router = require('express').Router();
 const Location = require('../models/Location');
-const { auth, allow } = require('../middleware/auth');
+const { auth, allow, can } = require('../middleware/auth');
 
 router.use(auth);
 
@@ -20,7 +20,7 @@ router.get('/:id', async (req, res) => {
   res.json(row);
 });
 
-router.post('/', allow('admin', 'coordinator'), async (req, res) => {
+router.post('/', can('managePlaces'), async (req, res) => {
   const { name, lat, lng } = req.body || {};
   if (!name || lat === undefined || lng === undefined) {
     return res.status(400).json({ error: 'Name and map position are required' });
@@ -29,13 +29,13 @@ router.post('/', allow('admin', 'coordinator'), async (req, res) => {
   res.status(201).json(row);
 });
 
-router.put('/:id', allow('admin', 'coordinator'), async (req, res) => {
+router.put('/:id', can('managePlaces'), async (req, res) => {
   const row = await Location.findByIdAndUpdate(req.params.id, req.body, { new: true });
   if (!row) return res.status(404).json({ error: 'Location not found' });
   res.json(row);
 });
 
-router.delete('/:id', allow('admin', 'coordinator'), async (req, res) => {
+router.delete('/:id', can('managePlaces'), async (req, res) => {
   const row = await Location.findByIdAndUpdate(req.params.id, { active: false }, { new: true });
   if (!row) return res.status(404).json({ error: 'Location not found' });
   res.json({ ok: true });

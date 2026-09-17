@@ -11,6 +11,7 @@ const Main = (function () {
   };
 
   function go(page) {
+    if (!allowed(page)) { toast('You do not have rights for that screen', 'error'); return; }
     document.querySelectorAll('.rail__link').forEach(b => b.classList.toggle('is-active', b.dataset.page === page));
     document.querySelectorAll('.page').forEach(p => { p.hidden = p.dataset.page !== page; });
     if (loaders[page]) Promise.resolve(loaders[page]()).catch(e => toast(e.message, 'error'));
@@ -42,12 +43,44 @@ const Main = (function () {
     if (el) el.textContent = new Date().toLocaleTimeString('en-IN', { hour12: true });
   }
 
+  // Hide what this person cannot use. The server refuses these calls anyway - this only
+  // stops someone being shown a screen that will bounce them, which reads as a broken app.
+  const PAGE_RIGHT = {
+    cases: 'createCases',
+    trips: 'viewReports',
+    runners: 'manageStaff',
+    places: 'managePlaces',
+    attendance: 'viewReports',
+    reports: 'viewReports'
+  };
+
+  function applyRights() {
+    Object.keys(PAGE_RIGHT).forEach(page => {
+      if (API.can(PAGE_RIGHT[page])) return;
+      const link = document.querySelector('.rail__link[data-page="' + page + '"]');
+      if (link) link.hidden = true;
+    });
+
+    [['newCaseBtn', 'createCases'], ['newRunnerBtn', 'manageStaff'], ['newPlaceBtn', 'managePlaces']]
+      .forEach(([id, right]) => {
+        const el = document.getElementById(id);
+        if (el && !API.can(right)) el.hidden = true;
+      });
+  }
+
+  // Never land on a page this account cannot open - fall back to the live board.
+  function allowed(page) {
+    const right = PAGE_RIGHT[page];
+    return !right || API.can(right);
+  }
+
   function boot() {
     const me = API.user();
     if (!API.token() || !me) { location.href = 'index.html'; return; }
 
     document.getElementById('whoName').textContent = me.name;
     document.getElementById('whoRole').textContent = me.role;
+    applyRights();
     document.getElementById('signOut').addEventListener('click', () => { API.clear(); location.href = 'index.html'; });
 
     document.querySelectorAll('.rail__link').forEach(b => b.addEventListener('click', () => go(b.dataset.page)));
@@ -55,7 +88,8 @@ const Main = (function () {
     document.getElementById('scrim').addEventListener('click', UI.closeDrawer);
     document.addEventListener('keydown', e => { if (e.key === 'Escape') UI.closeDrawer(); });
 
-    go((location.hash || '#live').slice(1) in loaders ? location.hash.slice(1) : 'live');
+    const wanted = (location.hash || '#live').slice(1);
+    go(wanted in loaders && allowed(wanted) ? wanted : 'live');
 
     strip();
     setInterval(strip, 15000);

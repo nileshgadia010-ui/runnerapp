@@ -31,6 +31,19 @@ const userSchema = new mongoose.Schema({
 
   // Tamper signals reported by the app. These are hints, not proof - a determined person
   // can defeat any client side check - but they let the desk see who is worth asking about.
+  // What this account is allowed to do. Role sets a sensible default; these switches let the
+  // office widen or narrow one person without inventing a new role. An admin always has
+  // everything, so a locked-out office is impossible.
+  rights: {
+    manageStaff:    { type: Boolean, default: false },   // add and edit user accounts
+    managePlaces:   { type: Boolean, default: false },   // hospitals, centres, geofences
+    createCases:    { type: Boolean, default: false },
+    assignTrips:    { type: Boolean, default: false },   // assign, reassign, re-ping, cancel
+    overrideStages: { type: Boolean, default: false },   // move a stage on the runner's behalf
+    editSettings:   { type: Boolean, default: false },   // crossmatch, close, cancel a case
+    viewReports:    { type: Boolean, default: false }
+  },
+
   integrity: {
     vpn: { type: Boolean, default: false },
     mockLocation: { type: Boolean, default: false },
@@ -55,8 +68,41 @@ userSchema.methods.publicJSON = function () {
     id: this._id, name: this.name, username: this.username, role: this.role,
     empCode: this.empCode, phone: this.phone, vehicleNo: this.vehicleNo, branch: this.branch,
     dutyState: this.dutyState, activeTrip: this.activeTrip, lastLocation: this.lastLocation,
-    lastSeenAt: this.lastSeenAt, active: this.active, integrity: this.integrity
+    lastSeenAt: this.lastSeenAt, active: this.active, integrity: this.integrity,
+    rights: this.effectiveRights()
   };
+};
+
+// Defaults per role, applied whenever a right has not been set explicitly.
+const ROLE_RIGHTS = {
+  admin: {
+    manageStaff: true, managePlaces: true, createCases: true,
+    assignTrips: true, overrideStages: true, editSettings: true, viewReports: true
+  },
+  coordinator: {
+    manageStaff: false, managePlaces: true, createCases: true,
+    assignTrips: true, overrideStages: true, editSettings: true, viewReports: true
+  },
+  runner: {
+    manageStaff: false, managePlaces: false, createCases: false,
+    assignTrips: false, overrideStages: false, editSettings: false, viewReports: false
+  }
+};
+
+userSchema.statics.defaultRights = function (role) {
+  return Object.assign({}, ROLE_RIGHTS[role] || ROLE_RIGHTS.runner);
+};
+
+// An admin is never limited by a stored switch - that is the safety net against somebody
+// accidentally saving themselves out of the system.
+userSchema.methods.effectiveRights = function () {
+  if (this.role === 'admin') return ROLE_RIGHTS.admin;
+  const stored = this.rights ? (this.rights.toObject ? this.rights.toObject() : this.rights) : {};
+  return Object.assign({}, ROLE_RIGHTS[this.role] || ROLE_RIGHTS.runner, stored);
+};
+
+userSchema.methods.can = function (right) {
+  return !!this.effectiveRights()[right];
 };
 
 module.exports = mongoose.model('User', userSchema);

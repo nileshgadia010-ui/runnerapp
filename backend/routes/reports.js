@@ -4,11 +4,11 @@ const Case = require('../models/Case');
 const User = require('../models/User');
 const Attendance = require('../models/Attendance');
 const LocationPing = require('../models/LocationPing');
-const { auth, allow } = require('../middleware/auth');
+const { auth, allow, can } = require('../middleware/auth');
 const { tripTat, caseTat, fmt, SLA } = require('../services/tat');
 const { distanceM } = require('../services/geo');
 
-router.use(auth, allow('admin', 'coordinator'));
+router.use(auth, can('viewReports'));
 
 function range(req) {
   const to = req.query.to || new Date(Date.now() + 330 * 60000).toISOString().slice(0, 10);

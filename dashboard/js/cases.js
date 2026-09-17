@@ -151,7 +151,7 @@ const Cases = (function () {
       '<div class="field"><label>Blood group</label><select id="cGroup"><option value="">--</option>' +
       ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map(g => '<option>' + g + '</option>').join('') + '</select></div>' +
       '<div class="field"><label>Component</label><select id="cComp">' +
-      ['PRBC', 'WB', 'FFP', 'SDP', 'RDP', 'CRYO'].map(g => '<option>' + g + '</option>').join('') + '</select></div></div>' +
+      ['PCV', 'FFP', 'PC', 'WB', 'SDP', 'RDP', 'CRYO', 'PRBC'].map(g => '<option>' + g + '</option>').join('') + '</select></div></div>' +
       '<div class="grid-2">' +
       '<div class="field"><label>Units needed</label><input id="cUnits" type="number" min="1" value="1"></div>' +
       '<div class="field"><label>Priority</label><select id="cPriority"><option value="ROUTINE">Routine</option><option value="URGENT">Urgent</option><option value="EMERGENCY">Emergency</option></select></div></div>' +

@@ -48,7 +48,8 @@ const Masters = (function () {
       '<div class="field"><label>Full name</label><input id="sName" value="' + v('name') + '"></div>' +
       '<div class="field"><label>Staff code</label><input id="sCode" value="' + v('empCode') + '"></div></div>' +
       '<div class="grid-2">' +
-      '<div class="field"><label>User ID for the app</label><input id="sUser" value="' + v('username') + '" ' + (u ? 'disabled' : '') + '></div>' +
+      '<div class="field"><label>User ID for the app</label><input id="sUser" value="' + v('username') + '">' +
+      '<small style="color:var(--muted);font-size:11px">Letters, numbers, dot, dash, underscore. Changing it keeps all history - the runner just signs in with the new ID.</small></div>' +
       '<div class="field"><label>' + (u ? 'New password (leave blank to keep)' : 'Password') + '</label><input id="sPass" type="text"></div></div>' +
       '<div class="grid-2">' +
       '<div class="field"><label>Phone</label><input id="sPhone" value="' + v('phone') + '"></div>' +
@@ -60,6 +61,7 @@ const Masters = (function () {
       '<div class="field"><label>Account</label><select id="sActive">' +
       '<option value="1" ' + (!u || u.active ? 'selected' : '') + '>Working</option>' +
       '<option value="0" ' + (u && !u.active ? 'selected' : '') + '>Switched off</option></select></div></div>' +
+      rightsBlock(u) +
       '<p style="color:var(--muted);font-size:13px">Runners sign in to the IBS Runner app with this user ID and password.</p>';
 
     UI.openDrawer(u ? 'Edit ' + u.name : 'Add staff', body,
@@ -77,11 +79,16 @@ const Masters = (function () {
       const pass = document.getElementById('sPass').value;
       if (pass) payload.password = pass;
 
+      payload.username = document.getElementById('sUser').value.trim().toLowerCase();
+      if (!payload.username) return toast('User ID is required', 'error');
+
+      const rights = readRights();
+      if (rights) payload.rights = rights;
+
       try {
         if (u) await API.put('/api/users/' + u.id, payload);
         else {
-          payload.username = document.getElementById('sUser').value.trim();
-          if (!payload.username || !pass) return toast('User ID and password are required', 'error');
+          if (!pass) return toast('Password is required for a new account', 'error');
           await API.post('/api/users', payload);
         }
         toast('Saved', 'ok');
@@ -216,6 +223,41 @@ const Masters = (function () {
         loadPlaces();
       } catch (e) { toast(e.message, 'error'); }
     });
+  }
+
+  // The seven things an account can be allowed to do. Only an admin sees or sends these;
+  // for anyone else the server ignores the field entirely.
+  const RIGHTS = [
+    ['manageStaff',    'Add and edit staff accounts'],
+    ['managePlaces',   'Add and edit hospitals and centres'],
+    ['createCases',    'Create and edit cases'],
+    ['assignTrips',    'Assign, reassign, re-ping and cancel jobs'],
+    ['overrideStages', 'Move a stage on the runner\'s behalf'],
+    ['editSettings',   'Crossmatch, close and cancel a case'],
+    ['viewReports',    'Open the reports and export data']
+  ];
+
+  function rightsBlock(u) {
+    if (!API.can('manageStaff') || (API.user() || {}).role !== 'admin') return '';
+
+    const current = (u && u.rights) || {};
+    // A new account starts from what its role normally gets; the admin then trims or widens.
+    const boxes = RIGHTS.map(([key, label]) =>
+      '<label class="right-row"><input type="checkbox" data-right="' + key + '" ' +
+      (u ? (current[key] ? 'checked' : '') : '') + '><span>' + label + '</span></label>').join('');
+
+    return '<div class="field"><label>What this person can do</label>' +
+      '<div class="rights-box" id="sRights">' + boxes + '</div>' +
+      '<small style="color:var(--muted);font-size:11px">An admin always has every right, whatever is ticked here. ' +
+      'Change the role above and these reset to that role\'s normal set.</small></div>';
+  }
+
+  function readRights() {
+    const host = document.getElementById('sRights');
+    if (!host) return null;
+    const out = {};
+    host.querySelectorAll('[data-right]').forEach(cb => { out[cb.dataset.right] = cb.checked; });
+    return out;
   }
 
   /* ---------------- attendance ---------------- */

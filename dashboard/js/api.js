@@ -30,6 +30,14 @@ const API = (function () {
 
   return {
     token, user, save, clear, qs,
+
+    // What the signed-in person is allowed to do. The server enforces this on every call -
+    // this copy only decides which buttons are worth showing.
+    can: function (right) {
+      const u = user();
+      return !!(u && u.rights && u.rights[right]);
+    },
+
     get: (u, p) => request('GET', u + (p ? '?' + qs(p) : '')),
     post: (u, b) => request('POST', u, b || {}),
     put: (u, b) => request('PUT', u, b || {}),
