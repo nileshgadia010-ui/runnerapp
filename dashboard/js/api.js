@@ -6,6 +6,16 @@ const API = (function () {
   function token() { return localStorage.getItem(KEY) || ''; }
   function user() { try { return JSON.parse(localStorage.getItem(USER) || 'null'); } catch (e) { return null; } }
   function save(t, u) { localStorage.setItem(KEY, t); localStorage.setItem(USER, JSON.stringify(u)); }
+
+  // Refreshes the cached user from the server. The browser copy goes stale the moment an
+  // admin changes someone's rights, or when the server itself gains new fields - so the
+  // shell calls this on every load rather than trusting whatever localStorage holds.
+  function refreshUser() {
+    return request('GET', '/api/auth/me').then(d => {
+      if (d && d.user) localStorage.setItem(USER, JSON.stringify(d.user));
+      return d && d.user;
+    }).catch(() => null);
+  }
   function clear() { localStorage.removeItem(KEY); localStorage.removeItem(USER); }
 
   async function request(method, url, body) {
@@ -29,13 +39,17 @@ const API = (function () {
     .join('&');
 
   return {
-    token, user, save, clear, qs,
+    token, user, save, clear, qs, refreshUser,
 
     // What the signed-in person is allowed to do. The server enforces this on every call -
     // this copy only decides which buttons are worth showing.
     can: function (right) {
       const u = user();
-      return !!(u && u.rights && u.rights[right]);
+      // No rights object at all means this session was saved before rights existed, or the
+      // server has not sent them yet. Fail OPEN here: the server checks every call anyway,
+      // and a stale browser copy must never lock someone out of their own dashboard.
+      if (!u || !u.rights) return true;
+      return !!u.rights[right];
     },
 
     get: (u, p) => request('GET', u + (p ? '?' + qs(p) : '')),

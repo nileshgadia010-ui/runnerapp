@@ -80,7 +80,17 @@ const Main = (function () {
 
     document.getElementById('whoName').textContent = me.name;
     document.getElementById('whoRole').textContent = me.role;
-    applyRights();
+
+    // Pull a fresh copy of the signed-in user before deciding what to hide. Without this a
+    // browser that signed in yesterday keeps yesterday's rights - which is exactly how the
+    // whole rail ends up unclickable after a server update.
+    API.refreshUser().then(u => {
+      if (u) {
+        document.getElementById('whoName').textContent = u.name;
+        document.getElementById('whoRole').textContent = u.role;
+      }
+      applyRights();
+    });
     document.getElementById('signOut').addEventListener('click', () => { API.clear(); location.href = 'index.html'; });
 
     document.querySelectorAll('.rail__link').forEach(b => b.addEventListener('click', () => go(b.dataset.page)));

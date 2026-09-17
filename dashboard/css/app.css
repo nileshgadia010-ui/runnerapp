@@ -187,6 +187,11 @@ button, input, select, textarea { font: inherit; color: inherit; }
   cursor: pointer; border: 0; background: none; text-align: left; width: 100%;
 }
 .rail__link:hover { background: rgba(255,255,255,.07); color: #fff; }
+
+/* Any element given `display` in a rule ignores the plain `hidden` attribute, which is how
+   a hidden rail button stayed visible while refusing every click. This makes `hidden` mean
+   hidden everywhere. */
+[hidden] { display: none !important; }
 .rail__link.is-active { background: rgba(255,255,255,.1); color: #fff; box-shadow: inset 3px 0 0 var(--crimson); }
 .rail__link svg { width: 18px; height: 18px; flex: none; }
 .rail__user { border-top: 1px solid rgba(255,255,255,.12); padding-top: 14px; font-size: 13px; }
