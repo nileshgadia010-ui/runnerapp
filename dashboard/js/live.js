@@ -77,6 +77,32 @@ const Live = (function () {
     return 'pin--grey';
   }
 
+  // A runner on the road is drawn as a scooter; a runner standing free is drawn as a person.
+  // Initials alone made every pin look identical from a distance - at a glance the desk now
+  // sees who is moving and who is waiting without reading anything.
+  const ICON_SCOOTER =
+    '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" ' +
+    'stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">' +
+    '<circle cx="5.5" cy="17.5" r="3"/><circle cx="18.5" cy="17.5" r="3"/>' +
+    '<path d="M5.5 17.5h8l3-9h2"/><path d="M13 8.5h3"/></svg>';
+
+  const ICON_PERSON =
+    '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" ' +
+    'stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">' +
+    '<circle cx="12" cy="7.5" r="3.2"/><path d="M5.5 20.5a6.5 6.5 0 0 1 13 0"/></svg>';
+
+  function pinGlyph(r) {
+    if (r.dutyState === 'ON_TRIP') return ICON_SCOOTER;
+    if (r.dutyState === 'OFF_DUTY') return '<span>' + F.initials(r.name) + '</span>';
+    return ICON_PERSON;
+  }
+
+  // A live runner's pin carries a slow halo so the eye finds movement on a busy map.
+  function pinHalo(r) {
+    if (r.signalLost || r.dutyState === 'OFF_DUTY') return '';
+    return '<i class="pin__halo"></i>';
+  }
+
   function paintMarkers() {
     const seen = {};
     runners.forEach(r => {
@@ -85,10 +111,16 @@ const Live = (function () {
       const pos = [r.lastLocation.lat, r.lastLocation.lng];
       const icon = L.divIcon({
         className: '',
-        html: '<div class="pin ' + pinClass(r) + '"><span>' + F.initials(r.name) + '</span></div>',
-        iconSize: [34, 34], iconAnchor: [17, 34]
+        html: '<div class="pin-wrap">' + pinHalo(r) +
+              '<div class="pin ' + pinClass(r) + '">' + pinGlyph(r) + '</div></div>',
+        iconSize: [44, 44], iconAnchor: [22, 40]
       });
-      const tip = F.esc(r.name) + '<br>' + (r.trip ? 'Trip ' + r.trip.tripNo : F.stageLabel('', r.dutyState)) +
+      const far = r.targetKm !== null && r.targetKm !== undefined
+        ? '<br>' + r.targetKm + ' km from ' + F.esc(r.targetName || 'the stop') + ' (~' + r.targetEtaMin + ' min)'
+        : '';
+      const tip = '<b>' + F.esc(r.name) + '</b><br>' +
+        (r.trip ? 'Trip ' + r.trip.tripNo : F.stageLabel('', r.dutyState)) + far +
+        '<br>' + r.tripsToday + ' job' + (r.tripsToday === 1 ? '' : 's') + ' today' +
         '<br>Last ping ' + F.ago(r.lastLocation.at);
 
       if (markers[r.id]) {
@@ -161,18 +193,34 @@ const Live = (function () {
   function runnerRow(r) {
     const dot = r.signalLost ? 'dot--amber' : r.dutyState === 'ON_TRIP' ? 'dot--blue'
       : r.dutyState === 'AVAILABLE' ? 'dot--green' : r.dutyState === 'BREAK' ? 'dot--amber' : 'dot--grey';
+
+    // Only a phone that is actually reporting gets the breathing ring. That is the whole
+    // point - "is he online right now" was impossible to tell from a static grey dot.
+    const alive = !r.signalLost && r.dutyState !== 'OFF_DUTY' ? ' dot--live' : '';
+
     const line = r.trip
       ? 'Trip ' + r.trip.tripNo + ' &middot; ' + F.stageLabel(r.trip.type, r.trip.status)
       : (r.dutyState === 'AVAILABLE' ? 'Free, waiting for a job' : r.dutyState === 'BREAK' ? 'On break' : 'Not punched in');
+
+    // Distance still to ride, when he is on a job and has pinged at least once.
+    const far = (r.targetKm !== null && r.targetKm !== undefined)
+      ? '<div class="runner-row__far">' + r.targetKm + ' km to ' + F.esc(r.targetName || 'the stop') +
+        ' <span>~' + r.targetEtaMin + ' min</span></div>'
+      : '';
+
+    // Workload at a glance, so the desk assigns the next job to whoever has done least.
+    const load = '<span class="load" title="Jobs done today">' + r.tripsToday + '</span>';
     // A phone reporting a VPN or a fake-GPS app gets a visible mark. It does not block
     // anything - it just means the desk can see it and ask.
     const flag = r.flagged ? ' <span class="chip chip--red" title="' + F.esc(flagText(r)) + '">!</span>' : '';
 
     return '<div class="runner-row" data-runner="' + r.id + '" ' + (r.trip ? 'data-trip="' + r.trip._id + '"' : '') + '>' +
-      '<div class="runner-row__av">' + F.initials(r.name) + '</div>' +
-      '<div class="runner-row__meta"><b>' + F.esc(r.name) + flag + '</b><span>' + line + '</span></div>' +
-      '<div style="text-align:right"><span class="dot ' + dot + '"></span>' +
-      '<div style="font-size:11px;color:var(--muted)">' + (r.lastSeenAt ? F.ago(r.lastSeenAt) : 'no ping') + '</div></div></div>';
+      '<div class="runner-row__av' + (r.dutyState === 'ON_TRIP' ? ' runner-row__av--riding' : '') + '">' +
+      (r.dutyState === 'OFF_DUTY' ? F.initials(r.name) : pinGlyph(r)) + '</div>' +
+      '<div class="runner-row__meta"><b>' + F.esc(r.name) + flag + '</b><span>' + line + '</span>' + far + '</div>' +
+      '<div class="runner-row__right">' + load +
+      '<span class="dot ' + dot + alive + '"></span>' +
+      '<div class="runner-row__ago">' + (r.lastSeenAt ? F.ago(r.lastSeenAt) : 'no ping') + '</div></div></div>';
   }
 
   function flagText(r) {

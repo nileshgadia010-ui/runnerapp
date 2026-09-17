@@ -55,20 +55,82 @@ button, input, select, textarea { font: inherit; color: inherit; }
   position: relative;
   overflow: hidden;
 }
+/* The red mass behind the story panel drifts and breathes rather than sitting still. It is
+   the only moving thing on the page, which is what makes it read as a heartbeat instead of
+   decoration. Slow on purpose - 9 seconds a cycle, so it is never distracting while someone
+   types a password. */
 .signin__pulse {
   position: absolute;
   inset: auto -80px -120px auto;
   width: 420px; height: 420px;
   border-radius: 50%;
   background: radial-gradient(circle at 30% 30%, rgba(200,16,46,.55), rgba(200,16,46,0) 62%);
+  animation: signinDrift 9s ease-in-out infinite;
+  will-change: transform, opacity;
 }
-.signin__mark { display: flex; align-items: center; gap: 12px; font-weight: 700; letter-spacing: .02em; }
-.signin__drop { width: 30px; height: 30px; }
-.signin__lede { font-size: 34px; line-height: 1.16; font-weight: 600; max-width: 15ch; }
-.signin__lede span { display: block; color: #FF6B82; }
-.signin__stats { display: flex; gap: 40px; position: relative; }
+@keyframes signinDrift {
+  0%, 100% { transform: scale(1) translate(0, 0); opacity: .85; }
+  50%      { transform: scale(1.12) translate(-26px, -18px); opacity: 1; }
+}
+
+/* A second, fainter mass moving against the first stops the background looking like one
+   flat circle sliding about. */
+.signin__story::after {
+  content: '';
+  position: absolute;
+  inset: -140px auto auto -120px;
+  width: 340px; height: 340px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 60% 40%, rgba(31,95,217,.30), rgba(31,95,217,0) 64%);
+  animation: signinDrift 13s ease-in-out infinite reverse;
+  pointer-events: none;
+}
+
+.signin__mark { display: flex; align-items: center; gap: 12px; font-weight: 700; letter-spacing: .02em; position: relative; }
+
+/* The drop beats like a pulse - the one piece of the brand that should feel alive on a
+   blood service screen. */
+.signin__drop {
+  width: 30px; height: 30px;
+  transform-origin: 50% 65%;
+  animation: dropBeat 2.6s ease-in-out infinite;
+  filter: drop-shadow(0 0 10px rgba(200,16,46,.55));
+}
+@keyframes dropBeat {
+  0%, 62%, 100% { transform: scale(1); }
+  70%           { transform: scale(1.16); }
+  78%           { transform: scale(1); }
+  86%           { transform: scale(1.09); }
+}
+
+/* Everything on the panel rises into place on load, staggered, so the page assembles
+   itself instead of appearing all at once. */
+.signin__mark  { animation: riseIn .7s cubic-bezier(.22,.9,.3,1) both; animation-delay: .05s; }
+.signin__lede  { font-size: 34px; line-height: 1.16; font-weight: 600; max-width: 15ch; position: relative;
+                 animation: riseIn .8s cubic-bezier(.22,.9,.3,1) both; animation-delay: .18s; }
+.signin__lede span { display: block; color: #FF6B82;
+                 animation: riseIn .8s cubic-bezier(.22,.9,.3,1) both; animation-delay: .34s; }
+.signin__stats { display: flex; gap: 40px; position: relative;
+                 animation: riseIn .8s cubic-bezier(.22,.9,.3,1) both; animation-delay: .5s; }
 .signin__stats div p { margin: 0; color: rgba(255,255,255,.62); font-size: 12px; }
 .signin__stats div strong { font-size: 22px; font-weight: 600; }
+.signin__stats div { transition: transform .25s ease; }
+.signin__stats div:hover { transform: translateY(-3px); }
+
+.signin__card { animation: riseIn .7s cubic-bezier(.22,.9,.3,1) both; animation-delay: .12s; }
+
+@keyframes riseIn {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Anyone who has asked their system to stop animating gets a still page. */
+@media (prefers-reduced-motion: reduce) {
+  .signin__pulse, .signin__story::after, .signin__drop,
+  .signin__mark, .signin__lede, .signin__lede span, .signin__stats, .signin__card,
+  .dot--live::after, .pin__halo { animation: none !important; }
+  .leaflet-marker-icon { transition: none !important; }
+}
 
 .signin__form { display: flex; align-items: center; justify-content: center; padding: 32px; }
 .signin__card { width: 100%; max-width: 360px; }
@@ -200,11 +262,26 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .chip--amber { background: var(--amber-soft); color: var(--amber); }
 .chip--ink { background: #E9EBF0; color: var(--ink); }
 
-.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; position: relative; }
 .dot--green { background: var(--jade); }
 .dot--blue { background: var(--cobalt); }
 .dot--grey { background: #98A2B3; }
 .dot--amber { background: var(--amber); }
+
+/* A phone that is actually reporting gets a breathing ring. A static dot told the desk
+   nothing - now "is he online" is answered from across the room. */
+.dot--live::after {
+  content: ''; position: absolute; inset: -4px; border-radius: 50%;
+  border: 2px solid currentColor; color: inherit;
+  background: inherit; opacity: .45;
+  animation: alive 1.8s ease-out infinite;
+}
+.dot--live { box-shadow: 0 0 0 0 rgba(6,122,85,.4); }
+@keyframes alive {
+  0%   { transform: scale(.7); opacity: .55; }
+  70%  { transform: scale(1.9); opacity: 0; }
+  100% { transform: scale(1.9); opacity: 0; }
+}
 
 .runner-row { display: flex; align-items: center; gap: 10px; padding: 10px; border: 1px solid var(--line); border-radius: var(--radius); cursor: pointer; }
 .runner-row:hover { border-color: #C8CEDA; }
@@ -215,6 +292,25 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .runner-row__meta { flex: 1; min-width: 0; }
 .runner-row__meta b { display: block; font-weight: 600; }
 .runner-row__meta span { font-size: 12px; color: var(--muted); display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* How far he still has to ride. The single most asked question at the desk. */
+.runner-row__far { font-size: 12px; font-weight: 600; color: var(--cobalt); margin-top: 2px; }
+.runner-row__far span { display: inline; font-size: 11px; color: var(--muted); font-weight: 400; }
+
+.runner-row__right { display: flex; align-items: center; gap: 8px; flex: none; }
+.runner-row__ago { font-size: 11px; color: var(--muted); white-space: nowrap; }
+
+/* Jobs done today, so the next job goes to whoever has carried least. */
+.load {
+  min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px;
+  display: inline-grid; place-items: center; font-size: 12px; font-weight: 700;
+  background: #EFF1F5; color: var(--ink-soft);
+}
+
+.runner-row__av--riding { background: var(--cobalt); }
+.runner-row__av svg { display: block; }
+.runner-row { transition: border-color .18s ease, transform .18s ease, box-shadow .18s ease; }
+.runner-row:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(16,24,40,.07); }
 
 /* ---------- tables ---------- */
 .table-wrap { overflow: auto; border: 1px solid var(--line); border-radius: var(--radius); background: #fff; }
@@ -273,6 +369,27 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .pin--grey { background: #98A2B3; }
 .pin--amber { background: var(--amber); }
 .pin--red { background: var(--crimson); }
+/* The halo sits behind a live pin and expands slowly, so a moving rider reads as alive
+   even when the map is zoomed out and the pin itself is only a few pixels wide. */
+.pin-wrap { position: relative; width: 44px; height: 44px; display: grid; place-items: center; }
+.pin-wrap .pin { position: relative; z-index: 2; }
+.pin__halo {
+  position: absolute; top: 50%; left: 50%; width: 34px; height: 34px; margin: -17px 0 0 -17px;
+  border-radius: 50%; background: currentColor; opacity: .25; z-index: 1;
+  animation: halo 2.2s ease-out infinite;
+}
+@keyframes halo {
+  0%   { transform: scale(.55); opacity: .35; }
+  75%  { transform: scale(1.5); opacity: 0; }
+  100% { transform: scale(1.5); opacity: 0; }
+}
+.pin-wrap:has(.pin--blue) { color: var(--cobalt); }
+.pin-wrap:has(.pin--green) { color: var(--jade); }
+.pin-wrap:has(.pin--amber) { color: var(--amber); }
+
+/* Moving the marker between two pings should glide, not teleport. */
+.leaflet-marker-icon { transition: transform .6s linear; }
+
 .pin-site { width: 22px; height: 22px; border-radius: 5px; background: #fff; border: 2px solid var(--ink); display: grid; place-items: center; font-size: 11px; }
 .pin-site--center { border-color: var(--crimson); color: var(--crimson); }
 

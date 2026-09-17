@@ -1,6 +1,9 @@
 const router = require('express').Router();
 const User = require('../models/User');
 const Trip = require('../models/Trip');
+const Attendance = require('../models/Attendance');
+const { roadKm, etaMinutes } = require('../services/geo');
+const { ISTDate } = require('../services/dispatch');
 const { auth, allow } = require('../middleware/auth');
 
 router.use(auth);
@@ -26,6 +29,12 @@ router.get('/live', async (req, res) => {
     .lean();
   const byId = Object.fromEntries(trips.map(t => [String(t._id), t]));
 
+  // Today's job count per runner, so the side panel can show workload at a glance.
+  const today = ISTDate();
+  const att = await Attendance.find({ runner: { $in: runners.map(r => r._id) }, date: today })
+    .select('runner tripsDone').lean();
+  const doneById = Object.fromEntries(att.map(a => [String(a.runner), a.tripsDone || 0]));
+
   const stale = Date.now() - 3 * 60 * 1000;
   res.json(runners.map(r => ({
     id: r._id,
@@ -43,9 +52,29 @@ router.get('/live', async (req, res) => {
     integrity: r.integrity || null,
     flagged: !!(r.integrity && (r.integrity.vpn || r.integrity.mockLocation || r.integrity.rooted)),
 
+    tripsToday: doneById[String(r._id)] || 0,
+
+    // How far he still has to ride to the point he is heading for right now. The desk asks
+    // this constantly ("kitna door hai?"), so the board answers it without anyone calling.
+    ...toTarget(r, r.activeTrip ? byId[String(r.activeTrip)] : null),
+
     trip: r.activeTrip ? byId[String(r.activeTrip)] || null : null
   })));
 });
+
+// The stop the runner is heading to, and the road distance from where he is now.
+function toTarget(runner, trip) {
+  if (!trip || !runner.lastLocation || !runner.lastLocation.lat) {
+    return { targetName: null, targetKm: null, targetEtaMin: null };
+  }
+  const beforePickup = ['ASSIGNED', 'ACCEPTED', 'EN_ROUTE_PICKUP', 'AT_PICKUP'].includes(trip.status);
+  const target = beforePickup ? trip.pickupLocation : trip.dropLocation;
+  if (!target || typeof target.lat !== 'number') {
+    return { targetName: null, targetKm: null, targetEtaMin: null };
+  }
+  const km = roadKm(runner.lastLocation.lat, runner.lastLocation.lng, target.lat, target.lng);
+  return { targetName: target.name, targetKm: km, targetEtaMin: etaMinutes(km) };
+}
 
 router.post('/', allow('admin', 'coordinator'), async (req, res) => {
   const { name, username, password, role, empCode, phone, vehicleNo, branch } = req.body || {};
