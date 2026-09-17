@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in - IBS Control Room</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Azeret+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<main class="signin">
+  <section class="signin__story">
+    <div class="signin__pulse"></div>
+    <div class="signin__mark">
+      <svg class="signin__drop" viewBox="0 0 24 24" fill="#C8102E" aria-hidden="true"><path d="M12 2s6.5 7.2 6.5 11.6A6.5 6.5 0 0 1 12 20a6.5 6.5 0 0 1-6.5-6.4C5.5 9.2 12 2 12 2z"/></svg>
+      <span>Indian Blood Service</span>
+    </div>
+    <h2 class="signin__lede">Every minute between the request and the bag<span>is now on one screen.</span></h2>
+    <div class="signin__stats">
+      <div><strong class="mono">Live</strong><p>Runner location on the map</p></div>
+      <div><strong class="mono">TAT</strong><p>Stage by stage, per trip</p></div>
+      <div><strong class="mono">Proof</strong><p>Photo at handover</p></div>
+    </div>
+  </section>
+
+  <section class="signin__form">
+    <form class="signin__card" id="loginForm">
+      <h1>Sign in</h1>
+      <p class="sub">Control room access for the IBS desk and managers.</p>
+      <div id="msg"></div>
+      <div class="field">
+        <label for="username">User ID</label>
+        <input id="username" name="username" autocomplete="username" required autofocus>
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required>
+      </div>
+      <button class="btn btn--block" type="submit" id="submitBtn">Sign in</button>
+      <p class="sub" style="margin-top:18px;font-size:12px">Runners sign in from the IBS Runner app on their phone, not here.</p>
+    </form>
+  </section>
+</main>
+
+<script src="js/api.js"></script>
+<script>
+if (API.token()) location.href = 'app.html';
+
+document.getElementById('loginForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const btn = document.getElementById('submitBtn');
+  const msg = document.getElementById('msg');
+  msg.innerHTML = '';
+  btn.disabled = true;
+  btn.textContent = 'Signing in...';
+  try {
+    const r = await API.post('/api/auth/login', {
+      username: document.getElementById('username').value.trim(),
+      password: document.getElementById('password').value
+    });
+    if (r.user.role === 'runner') throw new Error('Runner accounts sign in from the mobile app');
+    API.save(r.token, r.user);
+    location.href = 'app.html';
+  } catch (err) {
+    msg.innerHTML = '<div class="alert alert--error">' + err.message + '</div>';
+    btn.disabled = false;
+    btn.textContent = 'Sign in';
+  }
+});
+</script>
+</body>
+</html>

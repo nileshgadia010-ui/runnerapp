@@ -1,0 +1,195 @@
+const router = require('express').Router();
+const Trip = require('../models/Trip');
+const Case = require('../models/Case');
+const User = require('../models/User');
+const Attendance = require('../models/Attendance');
+const LocationPing = require('../models/LocationPing');
+const { auth, allow } = require('../middleware/auth');
+const { tripTat, caseTat, fmt, SLA } = require('../services/tat');
+const { distanceM } = require('../services/geo');
+
+router.use(auth, allow('admin', 'coordinator'));
+
+function range(req) {
+  const to = req.query.to || new Date(Date.now() + 330 * 60000).toISOString().slice(0, 10);
+  const from = req.query.from || to;
+  return { from: new Date(from + 'T00:00:00+05:30'), to: new Date(to + 'T23:59:59+05:30'), fromStr: from, toStr: to };
+}
+
+const avg = arr => (arr.length ? Math.round((arr.reduce((a, b) => a + b, 0) / arr.length) * 10) / 10 : null);
+
+// Trip-wise TAT sheet: one row per journey with every stage split out.
+router.get('/tat', async (req, res) => {
+  const { from, to } = range(req);
+  const q = { assignedAt: { $gte: from, $lte: to } };
+  if (req.query.runner) q.runner = req.query.runner;
+  if (req.query.type) q.type = req.query.type;
+
+  const trips = await Trip.find(q)
+    .populate('runner', 'name empCode')
+    .populate('case', 'caseNo patientName priority hospital')
+    .populate('pickupLocation dropLocation', 'name area')
+    .sort({ assignedAt: -1 }).lean();
+
+  const rows = trips.map(t => {
+    const tat = tripTat(t, new Date());
+    return {
+      tripNo: t.tripNo,
+      caseNo: t.case && t.case.caseNo,
+      patient: t.case && t.case.patientName,
+      priority: t.case && t.case.priority,
+      type: t.type,
+      runner: t.runner && t.runner.name,
+      pickup: t.pickupLocation && t.pickupLocation.name,
+      drop: t.dropLocation && t.dropLocation.name,
+      status: t.status,
+      assignedAt: t.assignedAt,
+      completedAt: t.completedAt,
+      accept: tat.parts.accept.value,
+      toPickup: tat.parts.toPickup.value,
+      pickupDwell: tat.parts.pickupDwell.value,
+      toDrop: tat.parts.toDrop.value,
+      dropDwell: tat.parts.dropDwell.value,
+      total: tat.parts.total.value,
+      grade: tat.worst
+    };
+  });
+
+  const done = rows.filter(r => r.status === 'COMPLETED');
+  res.json({
+    sla: SLA,
+    rows,
+    summary: {
+      trips: rows.length,
+      completed: done.length,
+      rejected: rows.filter(r => r.status === 'REJECTED').length,
+      breached: rows.filter(r => r.grade === 'breach').length,
+      onTimePercent: done.length ? Math.round((done.filter(r => r.grade !== 'breach').length / done.length) * 100) : null,
+      avgAccept: avg(done.map(r => r.accept).filter(v => v !== null)),
+      avgToPickup: avg(done.map(r => r.toPickup).filter(v => v !== null)),
+      avgPickupDwell: avg(done.map(r => r.pickupDwell).filter(v => v !== null)),
+      avgToDrop: avg(done.map(r => r.toDrop).filter(v => v !== null)),
+      avgDropDwell: avg(done.map(r => r.dropDwell).filter(v => v !== null)),
+      avgTotal: avg(done.map(r => r.total).filter(v => v !== null))
+    }
+  });
+});
+
+// Case-wise TAT: inquiry to delivery, including the crossmatch leg.
+router.get('/case-tat', async (req, res) => {
+  const { from, to } = range(req);
+  const cases = await Case.find({ createdAt: { $gte: from, $lte: to } })
+    .populate('hospital', 'name area')
+    .populate('sampleTrip deliveryTrip')
+    .sort({ createdAt: -1 }).lean();
+
+  const rows = cases.map(c => {
+    const t = caseTat(c, c.sampleTrip, c.deliveryTrip, new Date());
+    return {
+      caseNo: c.caseNo, patient: c.patientName, hospital: c.hospital && c.hospital.name,
+      bloodGroup: c.bloodGroup, component: c.component, units: c.unitsRequested,
+      priority: c.priority, status: c.status, createdAt: c.createdAt, closedAt: c.closedAt,
+      toAssign: t.parts.toAssign.value, sample: t.parts.samplePickup.value,
+      crossmatch: t.parts.crossmatch.value, delivery: t.parts.delivery.value,
+      total: t.parts.total.value, grade: t.parts.total.grade
+    };
+  });
+
+  const done = rows.filter(r => ['DELIVERED', 'CLOSED'].includes(r.status));
+  res.json({
+    rows,
+    summary: {
+      cases: rows.length,
+      delivered: done.length,
+      cancelled: rows.filter(r => r.status === 'CANCELLED').length,
+      avgTotal: avg(done.map(r => r.total).filter(v => v !== null)),
+      avgCrossmatch: avg(rows.map(r => r.crossmatch).filter(v => v !== null)),
+      onTimePercent: done.length ? Math.round((done.filter(r => r.grade !== 'breach').length / done.length) * 100) : null
+    }
+  });
+});
+
+// Runner scorecard: hours on duty, trips, distance, on-time share.
+router.get('/runners', async (req, res) => {
+  const { from, to, fromStr, toStr } = range(req);
+  const runners = await User.find({ role: 'runner', active: true }).sort({ name: 1 }).lean();
+  const trips = await Trip.find({ assignedAt: { $gte: from, $lte: to } }).lean();
+  const att = await Attendance.find({ date: { $gte: fromStr, $lte: toStr } }).lean();
+
+  const rows = [];
+  for (const r of runners) {
+    const mine = trips.filter(t => String(t.runner) === String(r._id));
+    const done = mine.filter(t => t.status === 'COMPLETED').map(t => tripTat(t));
+    const myAtt = att.filter(a => String(a.runner) === String(r._id));
+    const pings = await LocationPing.find({ runner: r._id, at: { $gte: from, $lte: to } }).sort({ at: 1 }).select('lat lng').lean();
+
+    let km = 0;
+    for (let i = 1; i < pings.length; i++) {
+      const d = distanceM(pings[i - 1].lat, pings[i - 1].lng, pings[i].lat, pings[i].lng) || 0;
+      if (d > 20 && d < 5000) km += d / 1000;
+    }
+
+    rows.push({
+      runner: r.name, empCode: r.empCode, vehicleNo: r.vehicleNo,
+      daysWorked: myAtt.filter(a => a.totalMinutes > 0).length,
+      dutyHours: Math.round(myAtt.reduce((s, a) => s + a.totalMinutes, 0) / 6) / 10,
+      trips: mine.length,
+      completed: done.length,
+      rejected: mine.filter(t => t.status === 'REJECTED').length,
+      avgAccept: avg(done.map(t => t.parts.accept.value).filter(v => v !== null)),
+      avgTrip: avg(done.map(t => t.totalMinutes).filter(v => v !== null)),
+      onTimePercent: done.length ? Math.round((done.filter(t => t.worst !== 'breach').length / done.length) * 100) : null,
+      distanceKm: Math.round(km * 10) / 10
+    });
+  }
+  res.json({ rows });
+});
+
+router.get('/attendance', async (req, res) => {
+  const { fromStr, toStr } = range(req);
+  const q = { date: { $gte: fromStr, $lte: toStr } };
+  if (req.query.runner) q.runner = req.query.runner;
+  const rows = await Attendance.find(q).populate('runner', 'name empCode').sort({ date: -1 }).lean();
+  res.json({
+    rows: rows.map(r => ({
+      date: r.date,
+      runner: r.runner && r.runner.name,
+      empCode: r.runner && r.runner.empCode,
+      firstIn: r.sessions[0] && r.sessions[0].inAt,
+      lastOut: r.sessions.length ? r.sessions[r.sessions.length - 1].outAt : null,
+      sessions: r.sessions.length,
+      hours: Math.round(r.totalMinutes / 6) / 10,
+      tripsDone: r.tripsDone,
+      open: r.open,
+      punchInPlace: r.sessions[0] ? (r.sessions[0].inAddress || (r.sessions[0].inLat + ', ' + r.sessions[0].inLng)) : ''
+    }))
+  });
+});
+
+// Numbers for the strip across the top of the control room screen.
+router.get('/today', async (req, res) => {
+  const start = new Date(new Date(Date.now() + 330 * 60000).toISOString().slice(0, 10) + 'T00:00:00+05:30');
+  const [openCases, activeTrips, runners] = await Promise.all([
+    Case.countDocuments({ status: { $nin: ['CLOSED', 'CANCELLED'] } }),
+    Trip.find({ status: { $nin: ['COMPLETED', 'REJECTED', 'CANCELLED'] } }).lean(),
+    User.find({ role: 'runner', active: true }).lean()
+  ]);
+  const doneToday = await Trip.find({ completedAt: { $gte: start } }).lean();
+  const tats = doneToday.map(t => tripTat(t));
+
+  res.json({
+    openCases,
+    activeTrips: activeTrips.length,
+    awaitingAccept: activeTrips.filter(t => t.status === 'ASSIGNED').length,
+    runnersAvailable: runners.filter(r => r.dutyState === 'AVAILABLE').length,
+    runnersOnTrip: runners.filter(r => r.dutyState === 'ON_TRIP').length,
+    runnersOffDuty: runners.filter(r => r.dutyState === 'OFF_DUTY').length,
+    runnersOnBreak: runners.filter(r => r.dutyState === 'BREAK').length,
+    completedToday: doneToday.length,
+    avgTatToday: avg(tats.map(t => t.totalMinutes).filter(v => v !== null)),
+    breachedToday: tats.filter(t => t.worst === 'breach').length,
+    liveBreaches: activeTrips.map(t => tripTat(t)).filter(t => t.worst === 'breach').length
+  });
+});
+
+module.exports = router;

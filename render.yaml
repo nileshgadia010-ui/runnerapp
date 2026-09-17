@@ -1,0 +1,48 @@
+# Render blueprint for the IBS backend + dashboard.
+# MongoDB is NOT hosted by Render - use a MongoDB Atlas cluster and paste its
+# connection string into MONGO_URI in the Render dashboard.
+services:
+  - type: web
+    name: ibs-runner
+    runtime: node
+    region: singapore
+    plan: starter
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: node server.js
+    healthCheckPath: /api/health
+    disk:
+      name: ibs-uploads
+      mountPath: /var/data/uploads
+      sizeGB: 1
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: UPLOAD_DIR
+        value: /var/data/uploads
+      - key: MONGO_URI
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES
+        value: 30d
+      - key: SLA_ACCEPT
+        value: 3
+      - key: SLA_REACH_PICKUP
+        value: 45
+      - key: SLA_PICKUP_DWELL
+        value: 10
+      - key: SLA_REACH_DROP
+        value: 45
+      - key: SLA_DROP_DWELL
+        value: 10
+      - key: SLA_TRIP_TOTAL
+        value: 110
+      - key: SLA_CROSSMATCH
+        value: 60
+      - key: SLA_CASE_TOTAL
+        value: 240
+      - key: PING_INTERVAL
+        value: 20
+      - key: POLL_INTERVAL
+        value: 5

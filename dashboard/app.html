@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IBS Control Room</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Azeret+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<div class="shell">
+  <nav class="rail">
+    <div class="rail__mark">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="#C8102E"><path d="M12 2s6.5 7.2 6.5 11.6A6.5 6.5 0 0 1 12 20a6.5 6.5 0 0 1-6.5-6.4C5.5 9.2 12 2 12 2z"/></svg>
+      <span>IBS Control</span>
+    </div>
+    <div class="rail__nav">
+      <button class="rail__link is-active" data-page="live">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11z"/><circle cx="12" cy="10" r="2.6"/></svg>
+        <span>Live board</span>
+      </button>
+      <button class="rail__link" data-page="cases">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
+        <span>Cases</span>
+      </button>
+      <button class="rail__link" data-page="trips">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>
+        <span>Trips &amp; TAT</span>
+      </button>
+      <button class="rail__link" data-page="runners">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.4"/><path d="M4.5 20c.9-3.6 3.9-5.6 7.5-5.6s6.6 2 7.5 5.6"/></svg>
+        <span>Runners</span>
+      </button>
+      <button class="rail__link" data-page="places">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7l6-3 6 3 6-3v13l-6 3-6-3-6 3z"/><path d="M9 4v13M15 7v13"/></svg>
+        <span>Hospitals</span>
+      </button>
+      <button class="rail__link" data-page="attendance">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
+        <span>Attendance</span>
+      </button>
+      <button class="rail__link" data-page="reports">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
+        <span>Reports</span>
+      </button>
+    </div>
+    <div class="rail__user">
+      <strong id="whoName">--</strong>
+      <span id="whoRole">--</span>
+      <button class="btn btn--ghost btn--sm rail__out" id="signOut">Sign out</button>
+    </div>
+  </nav>
+
+  <div class="main">
+    <div class="strip" id="strip"></div>
+
+    <!-- LIVE BOARD -->
+    <section class="page page--flush" data-page="live">
+      <div class="live">
+        <div id="map"></div>
+        <aside class="dock">
+          <div class="dock__tabs">
+            <button class="dock__tab is-active" data-dock="jobs">Running jobs</button>
+            <button class="dock__tab" data-dock="runners">Runners</button>
+          </div>
+          <div class="dock__body" id="dockBody"></div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- CASES -->
+    <section class="page" data-page="cases" hidden>
+      <div class="page__head">
+        <h2>Cases</h2>
+        <div class="spacer"></div>
+        <input class="field" id="caseSearch" placeholder="Search case no, patient, phone" style="width:240px;padding:9px 12px;border:1px solid var(--line);border-radius:8px">
+        <select id="caseFilter" style="padding:9px 12px;border:1px solid var(--line);border-radius:8px;background:#fff">
+          <option value="open">Open cases</option>
+          <option value="all">All cases</option>
+          <option value="NEW">Waiting to assign</option>
+          <option value="CROSSMATCH">Crossmatch</option>
+          <option value="READY">Units ready</option>
+          <option value="DELIVERED,CLOSED">Finished</option>
+        </select>
+        <button class="btn btn--red" id="newCaseBtn">New case</button>
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr>
+          <th>Case</th><th>Patient</th><th>Hospital</th><th>Group</th><th class="num">Units</th>
+          <th>Stage</th><th>Sample TAT</th><th>Crossmatch</th><th>Delivery</th><th>Total</th><th></th>
+        </tr></thead>
+        <tbody id="caseRows"></tbody>
+      </table></div>
+    </section>
+
+    <!-- TRIPS -->
+    <section class="page" data-page="trips" hidden>
+      <div class="page__head"><h2>Trips &amp; TAT</h2><div class="spacer"></div>
+        <button class="btn btn--ghost btn--sm" id="tripExport">Download CSV</button>
+      </div>
+      <div class="filters">
+        <div class="field"><label for="tripFrom">From</label><input type="date" id="tripFrom"></div>
+        <div class="field"><label for="tripTo">To</label><input type="date" id="tripTo"></div>
+        <div class="field"><label for="tripRunner">Runner</label><select id="tripRunner"><option value="">Everyone</option></select></div>
+        <div class="field"><label for="tripType">Leg</label><select id="tripType">
+          <option value="">Both legs</option><option value="SAMPLE_PICKUP">Sample pickup</option><option value="BLOOD_DELIVERY">Blood delivery</option>
+        </select></div>
+        <button class="btn" id="tripApply">Show</button>
+      </div>
+      <div id="tripSummary" style="margin-bottom:14px"></div>
+      <div class="table-wrap"><table>
+        <thead><tr>
+          <th>Trip</th><th>Case</th><th>Leg</th><th>Runner</th><th>From &rarr; To</th><th>Stage</th>
+          <th class="num">Accept</th><th class="num">To pickup</th><th class="num">At pickup</th>
+          <th class="num">To drop</th><th class="num">At drop</th><th class="num">Total</th><th></th>
+        </tr></thead>
+        <tbody id="tripRows"></tbody>
+      </table></div>
+    </section>
+
+    <!-- RUNNERS -->
+    <section class="page" data-page="runners" hidden>
+      <div class="page__head"><h2>Runners</h2><div class="spacer"></div>
+        <button class="btn btn--red" id="newRunnerBtn">Add staff</button>
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Name</th><th>Code</th><th>Phone</th><th>Vehicle</th><th>Role</th><th>Right now</th><th>Last ping</th><th></th></tr></thead>
+        <tbody id="runnerRows"></tbody>
+      </table></div>
+      <div class="page__head" style="margin-top:24px"><h2>Performance</h2><div class="spacer"></div>
+        <input type="date" id="perfFrom" style="padding:8px;border:1px solid var(--line);border-radius:8px">
+        <input type="date" id="perfTo" style="padding:8px;border:1px solid var(--line);border-radius:8px">
+        <button class="btn btn--ghost btn--sm" id="perfApply">Show</button>
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Runner</th><th class="num">Days</th><th class="num">Duty hrs</th><th class="num">Trips</th><th class="num">Done</th><th class="num">Declined</th><th class="num">Avg accept</th><th class="num">Avg trip</th><th class="num">On time</th><th class="num">Distance</th></tr></thead>
+        <tbody id="perfRows"></tbody>
+      </table></div>
+    </section>
+
+    <!-- PLACES -->
+    <section class="page" data-page="places" hidden>
+      <div class="page__head"><h2>Hospitals &amp; blood centres</h2><div class="spacer"></div>
+        <button class="btn btn--red" id="newPlaceBtn">Add place</button>
+      </div>
+      <p style="color:var(--muted);margin-top:-6px">Every place saved here shows up in the case dropdown, and its map position is what the runner app navigates to.</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Name</th><th>Type</th><th>Area</th><th>Contact</th><th>Map position</th><th class="num">Geofence</th><th></th></tr></thead>
+        <tbody id="placeRows"></tbody>
+      </table></div>
+    </section>
+
+    <!-- ATTENDANCE -->
+    <section class="page" data-page="attendance" hidden>
+      <div class="page__head"><h2>Attendance</h2><div class="spacer"></div>
+        <input type="date" id="attFrom" style="padding:8px;border:1px solid var(--line);border-radius:8px">
+        <input type="date" id="attTo" style="padding:8px;border:1px solid var(--line);border-radius:8px">
+        <button class="btn btn--ghost btn--sm" id="attApply">Show</button>
+        <button class="btn btn--ghost btn--sm" id="attExport">Download CSV</button>
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Date</th><th>Runner</th><th>First punch in</th><th>Last punch out</th><th class="num">Sessions</th><th class="num">Hours</th><th class="num">Trips</th><th>Punch in place</th></tr></thead>
+        <tbody id="attRows"></tbody>
+      </table></div>
+    </section>
+
+    <!-- REPORTS -->
+    <section class="page" data-page="reports" hidden>
+      <div class="page__head"><h2>Case TAT report</h2><div class="spacer"></div>
+        <input type="date" id="repFrom" style="padding:8px;border:1px solid var(--line);border-radius:8px">
+        <input type="date" id="repTo" style="padding:8px;border:1px solid var(--line);border-radius:8px">
+        <button class="btn btn--ghost btn--sm" id="repApply">Show</button>
+        <button class="btn btn--ghost btn--sm" id="repExport">Download CSV</button>
+      </div>
+      <div id="repSummary" style="margin-bottom:14px"></div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Case</th><th>Patient</th><th>Hospital</th><th>Group</th><th>Priority</th><th>Stage</th>
+          <th class="num">To assign</th><th class="num">Sample leg</th><th class="num">Crossmatch</th><th class="num">Delivery leg</th><th class="num">Request to bag</th></tr></thead>
+        <tbody id="repRows"></tbody>
+      </table></div>
+    </section>
+  </div>
+</div>
+
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer">
+  <div class="drawer__head"><h3 id="drawerTitle">Details</h3>
+    <button class="btn btn--ghost btn--sm" id="drawerClose">Close</button></div>
+  <div class="drawer__body" id="drawerBody"></div>
+  <div class="drawer__foot" id="drawerFoot"></div>
+</aside>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="/socket.io/socket.io.js"></script>
+<script src="js/api.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/live.js"></script>
+<script src="js/cases.js"></script>
+<script src="js/masters.js"></script>
+<script src="js/reports.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

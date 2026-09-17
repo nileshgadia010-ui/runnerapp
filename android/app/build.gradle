@@ -1,0 +1,35 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'com.searvator.ibsrunner'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.searvator.ibsrunner"
+        minSdk 24
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
+        // Default server address. The runner can change it on the sign-in screen.
+        buildConfigField "String", "DEFAULT_SERVER", "\"http://192.168.1.10:5000\""
+    }
+
+    buildFeatures { buildConfig true }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'androidx.core:core:1.12.0'
+}

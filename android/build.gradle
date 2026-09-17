@@ -1,0 +1,6 @@
+// Root build file. If your Gradle version complains about this AGP version, run:
+//   gradle wrapper --gradle-version 8.9
+// and then build with .\gradlew assembleDebug
+plugins {
+    id 'com.android.application' version '8.5.2' apply false
+}

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ink">#101828</color>
+    <color name="ink_soft">#475467</color>
+    <color name="muted">#667085</color>
+    <color name="mist">#F4F6F9</color>
+    <color name="line">#E3E8EF</color>
+    <color name="paper">#FFFFFF</color>
+    <color name="crimson">#C8102E</color>
+    <color name="crimson_soft">#FDECEF</color>
+    <color name="jade">#067A55</color>
+    <color name="jade_soft">#E6F4EF</color>
+    <color name="cobalt">#1F5FD9</color>
+    <color name="cobalt_soft">#E8EFFC</color>
+    <color name="amber">#B45309</color>
+    <color name="amber_soft">#FDF3E4</color>
+    <color name="grey_soft">#EFF1F5</color>
+</resources>
