@@ -8,7 +8,39 @@ const { auth, allow, can } = require('../middleware/auth');
 const { tripTat, caseTat, fmt, SLA } = require('../services/tat');
 const { distanceM } = require('../services/geo');
 
-router.use(auth, can('viewReports'));
+// Everyone signed in needs the counter strip - it sits on the live board, which is the one
+// screen every desk person opens. It is a set of counts, not a report, so it is deliberately
+// above the reports gate; without this, a coordinator without reports access watches the top
+// of her own dashboard fail with a 403 every fifteen seconds.
+router.use(auth);
+
+router.get('/today', async (req, res) => {
+  const start = new Date(new Date(Date.now() + 330 * 60000).toISOString().slice(0, 10) + 'T00:00:00+05:30');
+  const [openCases, activeTrips, runners] = await Promise.all([
+    Case.countDocuments({ status: { $nin: ['CLOSED', 'CANCELLED'] } }),
+    Trip.find({ status: { $nin: ['COMPLETED', 'REJECTED', 'CANCELLED'] } }).lean(),
+    User.find({ role: 'runner', active: true }).lean()
+  ]);
+  const doneToday = await Trip.find({ completedAt: { $gte: start } }).lean();
+  const tats = doneToday.map(t => tripTat(t));
+
+  res.json({
+    openCases,
+    activeTrips: activeTrips.length,
+    awaitingAccept: activeTrips.filter(t => t.status === 'ASSIGNED').length,
+    runnersAvailable: runners.filter(r => r.dutyState === 'AVAILABLE').length,
+    runnersOnTrip: runners.filter(r => r.dutyState === 'ON_TRIP').length,
+    runnersOffDuty: runners.filter(r => r.dutyState === 'OFF_DUTY').length,
+    runnersOnBreak: runners.filter(r => r.dutyState === 'BREAK').length,
+    completedToday: doneToday.length,
+    avgTatToday: avg(tats.map(t => t.totalMinutes).filter(v => v !== null)),
+    breachedToday: tats.filter(t => t.worst === 'breach').length,
+    liveBreaches: activeTrips.map(t => tripTat(t)).filter(t => t.worst === 'breach').length
+  });
+});
+
+// Everything below is a report proper and needs the right.
+router.use(can('viewReports'));
 
 function range(req) {
   const to = req.query.to || new Date(Date.now() + 330 * 60000).toISOString().slice(0, 10);
@@ -177,29 +209,6 @@ router.get('/attendance', async (req, res) => {
 });
 
 // Numbers for the strip across the top of the control room screen.
-router.get('/today', async (req, res) => {
-  const start = new Date(new Date(Date.now() + 330 * 60000).toISOString().slice(0, 10) + 'T00:00:00+05:30');
-  const [openCases, activeTrips, runners] = await Promise.all([
-    Case.countDocuments({ status: { $nin: ['CLOSED', 'CANCELLED'] } }),
-    Trip.find({ status: { $nin: ['COMPLETED', 'REJECTED', 'CANCELLED'] } }).lean(),
-    User.find({ role: 'runner', active: true }).lean()
-  ]);
-  const doneToday = await Trip.find({ completedAt: { $gte: start } }).lean();
-  const tats = doneToday.map(t => tripTat(t));
 
-  res.json({
-    openCases,
-    activeTrips: activeTrips.length,
-    awaitingAccept: activeTrips.filter(t => t.status === 'ASSIGNED').length,
-    runnersAvailable: runners.filter(r => r.dutyState === 'AVAILABLE').length,
-    runnersOnTrip: runners.filter(r => r.dutyState === 'ON_TRIP').length,
-    runnersOffDuty: runners.filter(r => r.dutyState === 'OFF_DUTY').length,
-    runnersOnBreak: runners.filter(r => r.dutyState === 'BREAK').length,
-    completedToday: doneToday.length,
-    avgTatToday: avg(tats.map(t => t.totalMinutes).filter(v => v !== null)),
-    breachedToday: tats.filter(t => t.worst === 'breach').length,
-    liveBreaches: activeTrips.map(t => tripTat(t)).filter(t => t.worst === 'breach').length
-  });
-});
 
 module.exports = router;

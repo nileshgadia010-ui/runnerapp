@@ -34,20 +34,16 @@ const userSchema = new mongoose.Schema({
   // What this account is allowed to do. Role sets a sensible default; these switches let the
   // office widen or narrow one person without inventing a new role. An admin always has
   // everything, so a locked-out office is impossible.
+  // Rights are stored as a list of what is GRANTED, plus a flag saying an admin has actually
+  // decided for this person.
   //
-  // These deliberately have NO default. A default of false would be written onto every
-  // existing document by Mongoose, and an explicit false always beats the role default -
-  // which would silently strip every coordinator of every right the moment this field was
-  // added. Undefined means "not decided for this person, use the role's normal set".
-  rights: {
-    manageStaff:    { type: Boolean },   // add and edit user accounts
-    managePlaces:   { type: Boolean },   // hospitals, centres, geofences
-    createCases:    { type: Boolean },
-    assignTrips:    { type: Boolean },   // assign, reassign, re-ping, cancel
-    overrideStages: { type: Boolean },   // move a stage on the runner's behalf
-    editSettings:   { type: Boolean },   // crossmatch, close, cancel a case
-    viewReports:    { type: Boolean }
-  },
+  // The obvious shape - an object of booleans - does not survive contact with Mongoose. It
+  // materialises its own defaults onto every existing document, and there is then no way to
+  // tell "the admin switched this off" apart from "this field never existed". That is
+  // exactly how every coordinator lost every right when this feature was added. A list has
+  // no such ambiguity: absent means nothing was decided, present means it was.
+  rightsSet: { type: Boolean, default: false },
+  rightsGranted: { type: [String], default: undefined },
 
   integrity: {
     vpn: { type: Boolean, default: false },
@@ -98,20 +94,35 @@ userSchema.statics.defaultRights = function (role) {
   return Object.assign({}, ROLE_RIGHTS[role] || ROLE_RIGHTS.runner);
 };
 
-// An admin is never limited by a stored switch - that is the safety net against somebody
-// accidentally saving themselves out of the system.
+userSchema.statics.RIGHT_KEYS = Object.keys(ROLE_RIGHTS.admin);
+
+// An admin is never limited by stored rights - that is the safety net against somebody
+// accidentally saving the office out of its own system.
 userSchema.methods.effectiveRights = function () {
   if (this.role === 'admin') return Object.assign({}, ROLE_RIGHTS.admin);
 
-  const out = Object.assign({}, ROLE_RIGHTS[this.role] || ROLE_RIGHTS.runner);
-  const stored = this.rights ? (this.rights.toObject ? this.rights.toObject() : this.rights) : {};
+  // No explicit decision on record: this person gets exactly what their role normally gets.
+  if (!this.rightsSet || !Array.isArray(this.rightsGranted)) {
+    return Object.assign({}, ROLE_RIGHTS[this.role] || ROLE_RIGHTS.runner);
+  }
 
-  // Only a real true/false counts as a decision. Anything undefined or null leaves the
-  // role default in place - copying it blindly is what wiped everyone's access before.
-  Object.keys(out).forEach(k => {
-    if (typeof stored[k] === 'boolean') out[k] = stored[k];
-  });
+  const granted = this.rightsGranted;
+  const out = {};
+  Object.keys(ROLE_RIGHTS.admin).forEach(k => { out[k] = granted.indexOf(k) >= 0; });
   return out;
+};
+
+// Records an admin's decision. Pass the rights that should be ON; everything else goes off.
+userSchema.methods.setRights = function (list) {
+  const valid = Object.keys(ROLE_RIGHTS.admin);
+  this.rightsGranted = (list || []).filter(r => valid.indexOf(r) >= 0);
+  this.rightsSet = true;
+};
+
+// Puts this person back on their role's normal set, as if nobody had ever customised them.
+userSchema.methods.resetRights = function () {
+  this.rightsGranted = undefined;
+  this.rightsSet = false;
 };
 
 userSchema.methods.can = function (right) {

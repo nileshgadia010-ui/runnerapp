@@ -54,16 +54,20 @@ const Main = (function () {
     reports: 'viewReports'
   };
 
+  // Safety net, used by BOTH hiding and navigation. If the rights data would deny every
+  // screen, something upstream is wrong - a stale copy, a bad save, a half-applied change.
+  // In that case the dashboard trusts nothing it was told and lets the server decide per
+  // call. Hiding a link but still blocking the click was the worst of both worlds.
+  function rightsUsable() {
+    const u = API.user() || {};
+    if (u.role === 'runner') return true;
+    const any = Object.keys(PAGE_RIGHT).some(p => API.can(PAGE_RIGHT[p]));
+    if (!any) console.warn('[rights] every screen came back denied - ignoring and letting the server decide');
+    return any;
+  }
+
   function applyRights() {
-    // Safety net. If the rights data would hide every screen, something upstream is wrong -
-    // a stale copy, a bad save, a half-applied migration. Showing a dashboard with one dead
-    // link is worse than showing everything and letting the server refuse a call, so in that
-    // case we hide nothing and say so in the console.
-    const visible = Object.keys(PAGE_RIGHT).filter(p => API.can(PAGE_RIGHT[p]));
-    if (!visible.length && (API.user() || {}).role !== 'runner') {
-      console.warn('[rights] every screen came back denied - showing all and letting the server decide');
-      return;
-    }
+    if (!rightsUsable()) return;
 
     Object.keys(PAGE_RIGHT).forEach(page => {
       if (API.can(PAGE_RIGHT[page])) return;
@@ -81,7 +85,9 @@ const Main = (function () {
   // Never land on a page this account cannot open - fall back to the live board.
   function allowed(page) {
     const right = PAGE_RIGHT[page];
-    return !right || API.can(right);
+    if (!right) return true;
+    if (!rightsUsable()) return true;
+    return API.can(right);
   }
 
   function boot() {

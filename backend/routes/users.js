@@ -97,7 +97,7 @@ router.post('/', can('manageStaff'), async (req, res) => {
   }
 
   const u = new User({ name, username: clean, role: wanted, empCode, phone, vehicleNo, branch });
-  u.rights = User.defaultRights(wanted);
+  // No applyRights call means no stored decision, which means the role's normal set applies.
   applyRights(u, req);
   u.setPassword(password);
   await u.save();
@@ -111,13 +111,13 @@ function normaliseUsername(raw) {
 }
 
 // Rights are only writable by an admin. A non-admin editing a user leaves them untouched.
+//
+// The body carries an object of booleans because that is what a screen of checkboxes
+// produces; it is turned into a granted list here, which is the only shape the model stores.
 function applyRights(u, req) {
   if (req.user.role !== 'admin' || !req.body.rights) return;
-  const next = Object.assign({}, User.defaultRights(u.role));
-  RIGHT_KEYS.forEach(k => {
-    if (req.body.rights[k] !== undefined) next[k] = !!req.body.rights[k];
-  });
-  u.rights = next;
+  const on = RIGHT_KEYS.filter(k => !!req.body.rights[k]);
+  u.setRights(on);
 }
 
 router.put('/:id', can('manageStaff'), async (req, res) => {
@@ -147,7 +147,7 @@ router.put('/:id', can('manageStaff'), async (req, res) => {
       return res.status(403).json({ error: 'Only an admin can change an admin account' });
     }
     u.role = req.body.role;
-    u.rights = User.defaultRights(u.role);   // a new role starts from that role's defaults
+    u.resetRights();   // a new role starts clean, on that role's normal set
   }
 
   // Nobody can switch off or demote their own account - that is how an office locks itself out.
