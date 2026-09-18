@@ -104,15 +104,15 @@ public class Clock {
     }
 
     /** Friendly day label for the trip list: Today / Yesterday / Mon 15 Sep. */
-    public static String dayLabel(String yyyymmdd, String todayStr) {
+    public static String dayLabel(android.content.Context c, String yyyymmdd, String todayStr) {
         if (yyyymmdd == null) return "";
-        if (yyyymmdd.equals(todayStr)) return "Today";
+        if (yyyymmdd.equals(todayStr)) return c.getString(R.string.day_today);
         try {
             SimpleDateFormat in = new SimpleDateFormat("yyyy-MM-dd", Locale.US);
             Date d = in.parse(yyyymmdd);
             Date today = in.parse(todayStr);
             long diff = (today.getTime() - d.getTime()) / (24L * 3600 * 1000);
-            if (diff == 1) return "Yesterday";
+            if (diff == 1) return c.getString(R.string.day_yesterday);
             return new SimpleDateFormat("EEE d MMM", Locale.US).format(d);
         } catch (Exception e) {
             return yyyymmdd;

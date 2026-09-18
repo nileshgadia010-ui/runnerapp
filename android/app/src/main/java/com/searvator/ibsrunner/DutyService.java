@@ -82,6 +82,13 @@ public class DutyService extends Service {
     };
 
     @Override
+    protected void attachBaseContext(Context base) {
+        // Notifications come from here, so the service needs the runner's language too -
+        // otherwise the alarm banner arrives in English on a Gujarati phone.
+        super.attachBaseContext(LocaleHelper.apply(base));
+    }
+
+    @Override
     public void onCreate() {
         super.onCreate();
         prefs = new Prefs(this);
@@ -110,7 +117,7 @@ public class DutyService extends Service {
             return START_STICKY;
         }
 
-        startForeground(NOTE_DUTY, dutyNotification("On duty", "Location is being shared with the IBS desk"));
+        startForeground(NOTE_DUTY, dutyNotification(getString(R.string.note_on_duty), getString(R.string.note_location_shared)));
         startTracking();
         if (!running) {
             running = true;
@@ -210,10 +217,12 @@ public class DutyService extends Service {
         }
 
         String duty = poll.optString("dutyState", "");
-        String head = trip != null ? trip.optString("headline") + " - " + trip.optString("statusLabel") : "No job right now";
+        String head = trip != null
+                ? trip.optString("headline") + " - " + trip.optString("statusLabel")
+                : getString(R.string.note_no_job);
         int pending = queue.size();
-        if (pending > 0) head = head + "  (" + pending + " waiting to upload)";
-        updateDutyNotification("AVAILABLE".equals(duty) ? "On duty, free" : "On duty", head);
+        if (pending > 0) head = head + "  (" + getString(R.string.note_waiting_upload, pending) + ")";
+        updateDutyNotification(getString("AVAILABLE".equals(duty) ? R.string.note_on_duty_free : R.string.note_on_duty), head);
     }
 
     /* ---------------- queues ---------------- */
@@ -305,7 +314,7 @@ public class DutyService extends Service {
 
         Notification n = new NotificationCompat.Builder(this, CH_JOB)
                 .setSmallIcon(android.R.drawable.ic_dialog_alert)
-                .setContentTitle("New job: " + trip.optString("headline"))
+                .setContentTitle(getString(R.string.note_new_job, trip.optString("headline")))
                 .setContentText(patient + " - " + where)
                 .setPriority(NotificationCompat.PRIORITY_MAX)
                 .setCategory(NotificationCompat.CATEGORY_CALL)
@@ -379,13 +388,13 @@ public class DutyService extends Service {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
         NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
 
-        NotificationChannel duty = new NotificationChannel(CH_DUTY, "Duty status", NotificationManager.IMPORTANCE_LOW);
-        duty.setDescription("Shows that location sharing is on while you are punched in");
+        NotificationChannel duty = new NotificationChannel(CH_DUTY, getString(R.string.ch_duty_name), NotificationManager.IMPORTANCE_LOW);
+        duty.setDescription(getString(R.string.ch_duty_desc));
         duty.setShowBadge(false);
         nm.createNotificationChannel(duty);
 
-        NotificationChannel job = new NotificationChannel(CH_JOB, "New job alarm", NotificationManager.IMPORTANCE_HIGH);
-        job.setDescription("Rings when the desk assigns you a job");
+        NotificationChannel job = new NotificationChannel(CH_JOB, getString(R.string.ch_job_name), NotificationManager.IMPORTANCE_HIGH);
+        job.setDescription(getString(R.string.ch_job_desc));
         job.setBypassDnd(true);
         job.enableVibration(true);
         job.setVibrationPattern(new long[]{0, 800, 400});

@@ -13,7 +13,6 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AlertDialog;
-import androidx.appcompat.app.AppCompatActivity;
 
 import org.json.JSONObject;
 
@@ -24,7 +23,7 @@ import org.json.JSONObject;
  * in silent mode, at full volume, on a loop, and it keeps going until this screen is answered.
  * The back button does nothing here on purpose - a job is accepted or declined, not dismissed.
  */
-public class AlertActivity extends AppCompatActivity {
+public class AlertActivity extends BaseActivity {
 
     private Api api;
     private SyncQueue queue;
@@ -73,7 +72,7 @@ public class AlertActivity extends AppCompatActivity {
             TextView t = findViewById(R.id.alertWaiting);
             if (t != null && shownAt > 0) {
                 long s = (Clock.now() - shownAt) / 1000;
-                t.setText("Ringing for " + Clock.hms(s));
+                t.setText(getString(R.string.ringing_for, Clock.hms(s)));
             }
             ui.postDelayed(this, 1000);
         }
@@ -95,7 +94,7 @@ public class AlertActivity extends AppCompatActivity {
         JSONObject target = trip.optJSONObject("target");
         if (target == null) target = sample ? trip.optJSONObject("pickup") : trip.optJSONObject("drop");
 
-        ((TextView) findViewById(R.id.alertKind)).setText(sample ? "Go and collect a sample" : "Go and deliver blood");
+        ((TextView) findViewById(R.id.alertKind)).setText(getString(sample ? R.string.go_collect_sample : R.string.go_deliver_blood));
         ((TextView) findViewById(R.id.alertPlace)).setText(target != null ? target.optString("name") : "");
         ((TextView) findViewById(R.id.alertArea)).setText(target != null ? target.optString("area") : "");
         ((TextView) findViewById(R.id.alertPatient)).setText(trip.optString("patientName"));
@@ -112,7 +111,7 @@ public class AlertActivity extends AppCompatActivity {
         if (!trip.isNull("targetKm")) {
             double km = trip.optDouble("targetKm", 0);
             int eta = trip.optInt("targetEtaMin", 0);
-            dist.setText("≈ " + String.format(java.util.Locale.US, "%.1f", km) + " km away  •  about " + eta + " min");
+            dist.setText("≈ " + getString(R.string.km_away, String.format(java.util.Locale.US, "%.1f", km), eta));
             dist.setVisibility(View.VISIBLE);
         } else {
             dist.setVisibility(View.GONE);
@@ -151,14 +150,11 @@ public class AlertActivity extends AppCompatActivity {
             JSONObject body = new JSONObject().put("stage", "ACCEPTED").put("at", at);
             api.post("/api/runner/trip/" + tripId + "/stage", body, (ok, data, err) -> {
                 if (!ok) {
-                    boolean networkProblem = err == null || err.startsWith("No internet")
-                            || err.startsWith("Cannot reach") || err.startsWith("Server is slow");
-                    if (networkProblem) {
+                    if (Api.isNetwork(err)) {
                         queue.addStage(tripId, "ACCEPTED", 0, 0, null, null, null);
-                        Toast.makeText(this, "Accepted. Saved on your phone, the office will get it.",
-                                Toast.LENGTH_SHORT).show();
+                        Toast.makeText(this, R.string.accepted_saved, Toast.LENGTH_SHORT).show();
                     } else {
-                        Toast.makeText(this, err, Toast.LENGTH_LONG).show();
+                        Toast.makeText(this, Api.text(err), Toast.LENGTH_LONG).show();
                         findViewById(R.id.acceptBtn).setEnabled(true);
                         return;
                     }
@@ -180,11 +176,11 @@ public class AlertActivity extends AppCompatActivity {
 
     private void decline() {
         final EditText input = new EditText(this);
-        input.setHint("Why can you not take this job?");
+        input.setHint(R.string.decline_hint);
         new AlertDialog.Builder(this)
-                .setTitle("Decline this job")
+                .setTitle(R.string.decline_title)
                 .setView(input)
-                .setPositiveButton("Decline", (d, w) -> {
+                .setPositiveButton(R.string.decline, (d, w) -> {
                     DutyService.silence(this);
                     final String note = input.getText().toString().trim();
                     try {
@@ -194,17 +190,17 @@ public class AlertActivity extends AppCompatActivity {
                                 .put("note", note);
                         api.post("/api/runner/trip/" + tripId + "/stage", body, (ok, data, err) -> {
                             if (!ok) queue.addStage(tripId, "REJECTED", 0, 0, null, null, note);
-                            Toast.makeText(this, "The desk has been told", Toast.LENGTH_LONG).show();
+                            Toast.makeText(this, R.string.desk_told, Toast.LENGTH_LONG).show();
                             finish();
                         });
                     } catch (Exception e) { finish(); }
                 })
-                .setNegativeButton("Go back", null)
+                .setNegativeButton(R.string.go_back, null)
                 .show();
     }
 
     @Override
     public void onBackPressed() {
-        Toast.makeText(this, "Accept or decline the job first", Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, R.string.accept_first, Toast.LENGTH_SHORT).show();
     }
 }

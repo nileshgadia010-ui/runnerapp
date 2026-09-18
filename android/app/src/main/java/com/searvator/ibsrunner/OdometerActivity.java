@@ -12,7 +12,6 @@ import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.TextView;
 
-import androidx.appcompat.app.AppCompatActivity;
 
 import java.io.File;
 
@@ -26,7 +25,7 @@ import java.io.File;
  * Returns the reading and the photo path to whoever started it; it does not talk to the
  * server itself, because the punch call has to carry both together.
  */
-public class OdometerActivity extends AppCompatActivity {
+public class OdometerActivity extends BaseActivity {
 
     public static final String EXTRA_MODE = "mode";          // "in" or "out"
     public static final String EXTRA_MIN = "min";            // reading cannot be below this
@@ -62,14 +61,12 @@ public class OdometerActivity extends AppCompatActivity {
         photoBtn = findViewById(R.id.odoPhotoBtn);
         saveBtn = findViewById(R.id.odoSaveBtn);
 
-        head.setText(punchIn ? "Start of day meter" : "End of day meter");
-        sub.setText(punchIn
-                ? "Take a clear photo of your bike meter, then type the number you see. This starts your day."
-                : "Take a photo of the meter again. The difference is your kilometres for the day.");
-        saveBtn.setText(punchIn ? "PUNCH IN" : "PUNCH OUT");
+        head.setText(getString(punchIn ? R.string.odo_start_title : R.string.odo_end_title));
+        sub.setText(getString(punchIn ? R.string.odo_start_sub : R.string.odo_end_sub));
+        saveBtn.setText(getString(punchIn ? R.string.punch_in : R.string.punch_out));
 
         if (minReading > 0) {
-            hint.setText("Morning reading was " + minReading + " km. Today's number must be higher.");
+            hint.setText(getString(R.string.odo_morning_was, minReading));
             hint.setVisibility(View.VISIBLE);
         }
 
@@ -91,7 +88,7 @@ public class OdometerActivity extends AppCompatActivity {
             i.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
             startActivityForResult(i, REQ_CAMERA);
         } catch (Exception e) {
-            showError("Could not open the camera on this phone.");
+            showError(getString(R.string.camera_not_open));
         }
     }
 
@@ -111,29 +108,29 @@ public class OdometerActivity extends AppCompatActivity {
             placeholder.setVisibility(View.GONE);
             Anim.enter(preview);
         }
-        photoBtn.setText("RETAKE PHOTO");
+        photoBtn.setText(R.string.retake_photo);
     }
 
     private void finishUp() {
         String raw = value.getText().toString().trim();
-        if (raw.isEmpty()) { showError("Type the meter reading you can see in the photo."); return; }
+        if (raw.isEmpty()) { showError(getString(R.string.odo_type_reading)); return; }
 
         int odo;
         try { odo = Integer.parseInt(raw); }
-        catch (Exception e) { showError("Enter numbers only."); return; }
+        catch (Exception e) { showError(getString(R.string.odo_numbers_only)); return; }
 
-        if (odo <= 0) { showError("Enter a real meter reading."); return; }
+        if (odo <= 0) { showError(getString(R.string.odo_real_reading)); return; }
         if (minReading > 0 && odo < minReading) {
-            showError("The meter cannot go backwards. Morning reading was " + minReading + " km.");
+            showError(getString(R.string.odo_backwards, minReading));
             return;
         }
         // A bike does not do 500 km in one shift. Almost always a digit typed twice.
         if (minReading > 0 && odo - minReading > 500) {
-            showError("That is " + (odo - minReading) + " km in one day. Check the number again.");
+            showError(getString(R.string.odo_too_far, odo - minReading));
             return;
         }
         if (photo == null || !photo.exists()) {
-            showError("The meter photo is needed. Tap the blue button above.");
+            showError(getString(R.string.odo_photo_needed));
             return;
         }
 

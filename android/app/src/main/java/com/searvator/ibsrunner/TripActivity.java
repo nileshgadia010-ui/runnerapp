@@ -17,7 +17,6 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AlertDialog;
-import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 
 import org.json.JSONObject;
@@ -37,7 +36,7 @@ import java.util.Map;
  * One stage is deliberately not optimistic: the delivery handover. That needs a photo, and a
  * photo cannot be faked forward - so it holds until the upload actually succeeds.
  */
-public class TripActivity extends AppCompatActivity {
+public class TripActivity extends BaseActivity {
 
     private static final int REQ_PHOTO = 21;
 
@@ -111,7 +110,7 @@ public class TripActivity extends AppCompatActivity {
             if (!ok || data == null || data.optString("id").isEmpty()) {
                 // Offline? Keep whatever we already drew instead of throwing him out.
                 if (trip != null) { paintOfflineNote(); return; }
-                Toast.makeText(this, ok ? "This job is finished" : String.valueOf(err), Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, ok ? getString(R.string.this_job_finished) : Api.text(err), Toast.LENGTH_SHORT).show();
                 finish();
                 return;
             }
@@ -140,7 +139,7 @@ public class TripActivity extends AppCompatActivity {
         meta.setText(metaLine());
 
         String w = trip.optString("wardBed", "");
-        ward.setText(w.isEmpty() ? "" : "Ward / bed: " + w);
+        ward.setText(w.isEmpty() ? "" : getString(R.string.ward_bed, w));
         ward.setVisibility(w.isEmpty() ? View.GONE : View.VISIBLE);
 
         JSONObject pick = trip.optJSONObject("pickup");
@@ -155,28 +154,28 @@ public class TripActivity extends AppCompatActivity {
             double km = trip.optDouble("targetKm", 0);
             int eta = trip.optInt("targetEtaMin", 0);
             JSONObject target = trip.optJSONObject("target");
-            String name = target != null ? target.optString("name") : "the next stop";
-            distanceLine.setText("≈ " + String.format(java.util.Locale.US, "%.1f", km)
-                    + " km to " + name + "  •  about " + eta + " min");
+            String name = target != null ? target.optString("name") : "";
+            distanceLine.setText("≈ " + getString(R.string.km_to_stop,
+                    String.format(java.util.Locale.US, "%.1f", km), name, eta));
             Anim.show(distanceLine, true);
         } else {
             Anim.show(distanceLine, false);
         }
 
-        stageText.setText(labelFor(sample, status()));
+        stageText.setText(stageLabel(sample, status()));
 
         String r = trip.optString("remarks", "");
-        remarks.setText(r.isEmpty() ? "" : "Desk note: " + r);
+        remarks.setText(r.isEmpty() ? "" : getString(R.string.desk_note, r));
         remarks.setVisibility(r.isEmpty() ? View.GONE : View.VISIBLE);
 
         String bc = trip.optString("sampleBarcode", "");
-        barcodeLine.setText(bc.isEmpty() ? "" : "Sample barcode: " + bc);
+        barcodeLine.setText(bc.isEmpty() ? "" : getString(R.string.sample_barcode, bc));
         barcodeLine.setVisibility(bc.isEmpty() ? View.GONE : View.VISIBLE);
 
         String[] next = nextStage(trip.optString("type"), status());
         if (next == null) {
             Anim.show(actionBtn, false);
-            stageText.setText(sample ? "Sample handed over. Job done." : "Blood delivered. Job done.");
+            stageText.setText(getString(sample ? R.string.job_done_sample : R.string.job_done_blood));
         } else {
             actionBtn.setVisibility(View.VISIBLE);
             actionBtn.setEnabled(true);
@@ -191,8 +190,8 @@ public class TripActivity extends AppCompatActivity {
         int pending = queue.size();
         if (!api.online() || pending > 0) {
             offlineNote.setText(pending > 0
-                    ? pending + " " + (pending == 1 ? "step is" : "steps are") + " saved on your phone and will reach the office automatically."
-                    : "No internet. Keep pressing the buttons as normal - everything is being saved.");
+                    ? getString(R.string.offline_steps_saved, pending)
+                    : getString(R.string.offline_keep_pressing));
             Anim.show(offlineNote, true);
         } else {
             Anim.show(offlineNote, false);
@@ -207,7 +206,7 @@ public class TripActivity extends AppCompatActivity {
             if (!v.isEmpty() && !"null".equals(v)) { if (sb.length() > 0) sb.append("  |  "); sb.append(v); }
         }
         int units = trip.optInt("units", 0);
-        if (units > 0) sb.append(sb.length() > 0 ? "  |  " : "").append(units).append(" unit(s)");
+        if (units > 0) sb.append(sb.length() > 0 ? "  |  " : "").append(getString(R.string.units_count, units));
         return sb.toString();
     }
 
@@ -231,31 +230,31 @@ public class TripActivity extends AppCompatActivity {
         stageTimer.setText(stage >= 0 ? Clock.hms(stage / 1000) : "--:--");
     }
 
-    private static String labelFor(boolean sample, String stage) {
+    private String stageLabel(boolean sample, String stage) {
         switch (stage) {
-            case "ASSIGNED": return "New job assigned";
-            case "ACCEPTED": return "Job accepted";
-            case "EN_ROUTE_PICKUP": return sample ? "On the way to hospital" : "On the way to blood centre";
-            case "AT_PICKUP": return sample ? "Reached hospital" : "Reached blood centre";
-            case "PICKED": return sample ? "Sample collected" : "Blood units loaded";
-            case "EN_ROUTE_DROP": return sample ? "Returning to blood centre" : "On the way to hospital";
-            case "AT_DROP": return sample ? "Reached blood centre" : "Reached hospital";
-            case "COMPLETED": return sample ? "Sample handed over" : "Blood delivered";
+            case "ASSIGNED": return getString(R.string.st_new_job);
+            case "ACCEPTED": return getString(R.string.st_accepted);
+            case "EN_ROUTE_PICKUP": return getString(sample ? R.string.st_enroute_hosp : R.string.st_enroute_centre);
+            case "AT_PICKUP": return getString(sample ? R.string.st_at_hosp : R.string.st_at_centre);
+            case "PICKED": return getString(sample ? R.string.st_sample_taken : R.string.st_units_loaded);
+            case "EN_ROUTE_DROP": return getString(sample ? R.string.st_return_centre : R.string.st_enroute_hosp);
+            case "AT_DROP": return getString(sample ? R.string.st_at_centre : R.string.st_at_hosp);
+            case "COMPLETED": return getString(sample ? R.string.st_sample_handed : R.string.st_blood_delivered);
             default: return stage;
         }
     }
 
     /** The one place that decides what the big button does next. */
-    static String[] nextStage(String type, String status) {
+    String[] nextStage(String type, String status) {
         boolean sample = "SAMPLE_PICKUP".equals(type);
         switch (status) {
-            case "ASSIGNED": return new String[]{"ACCEPTED", "Accept this job"};
-            case "ACCEPTED": return new String[]{"EN_ROUTE_PICKUP", sample ? "Start for the hospital" : "Start for the blood centre"};
-            case "EN_ROUTE_PICKUP": return new String[]{"AT_PICKUP", sample ? "I have reached the hospital" : "I have reached the blood centre"};
-            case "AT_PICKUP": return new String[]{"PICKED", sample ? "Sample collected" : "Blood units collected"};
-            case "PICKED": return new String[]{"EN_ROUTE_DROP", sample ? "Start back to the blood centre" : "Start for the hospital"};
-            case "EN_ROUTE_DROP": return new String[]{"AT_DROP", sample ? "I have reached the blood centre" : "I have reached the hospital"};
-            case "AT_DROP": return new String[]{"COMPLETED", sample ? "Sample handed over" : "Take the handover photo"};
+            case "ASSIGNED": return new String[]{"ACCEPTED", getString(R.string.btn_accept_job)};
+            case "ACCEPTED": return new String[]{"EN_ROUTE_PICKUP", getString(sample ? R.string.btn_start_hosp : R.string.btn_start_centre)};
+            case "EN_ROUTE_PICKUP": return new String[]{"AT_PICKUP", getString(sample ? R.string.btn_reached_hosp : R.string.btn_reached_centre)};
+            case "AT_PICKUP": return new String[]{"PICKED", getString(sample ? R.string.btn_sample_collected : R.string.btn_units_collected)};
+            case "PICKED": return new String[]{"EN_ROUTE_DROP", getString(sample ? R.string.btn_start_back_centre : R.string.btn_start_hosp)};
+            case "EN_ROUTE_DROP": return new String[]{"AT_DROP", getString(sample ? R.string.btn_reached_centre : R.string.btn_reached_hosp)};
+            case "AT_DROP": return new String[]{"COMPLETED", getString(sample ? R.string.btn_sample_handed : R.string.btn_take_photo)};
             default: return null;
         }
     }
@@ -274,17 +273,17 @@ public class TripActivity extends AppCompatActivity {
     /** Barcode on the sample leg, unit count on the delivery leg. */
     private void askExtra(boolean sample) {
         EditText input = new EditText(this);
-        if (sample) input.setHint("Sample barcode or tube number");
-        else { input.setHint("How many units are you carrying?"); input.setInputType(android.text.InputType.TYPE_CLASS_NUMBER); }
+        if (sample) input.setHint(R.string.barcode_hint);
+        else { input.setHint(R.string.units_hint); input.setInputType(android.text.InputType.TYPE_CLASS_NUMBER); }
 
         new AlertDialog.Builder(this)
-                .setTitle(sample ? "Sample collected" : "Units collected")
+                .setTitle(getString(sample ? R.string.btn_sample_collected : R.string.units_collected_title))
                 .setView(input)
-                .setPositiveButton("Save", (d, w) -> {
+                .setPositiveButton(R.string.save, (d, w) -> {
                     String v = input.getText().toString().trim();
                     send("PICKED", sample ? v : null, sample ? null : v, null);
                 })
-                .setNegativeButton("Cancel", null)
+                .setNegativeButton(R.string.cancel, null)
                 .show();
     }
 
@@ -300,7 +299,7 @@ public class TripActivity extends AppCompatActivity {
             i.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
             startActivityForResult(i, REQ_PHOTO);
         } catch (Exception e) {
-            Toast.makeText(this, "Camera could not open", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, R.string.camera_not_open, Toast.LENGTH_LONG).show();
         }
     }
 
@@ -315,7 +314,7 @@ public class TripActivity extends AppCompatActivity {
         super.onActivityResult(req, res, data);
         if (req != REQ_PHOTO) return;
         if (res != RESULT_OK || photoFile == null || !photoFile.exists()) {
-            Toast.makeText(this, "Photo not taken. The job needs a handover photo.", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, R.string.photo_not_taken, Toast.LENGTH_LONG).show();
             return;
         }
         Photos.shrink(photoFile);
@@ -341,21 +340,21 @@ public class TripActivity extends AppCompatActivity {
         if (needsPhoto) {
             // Hold the screen: a handover is only real once the photo is actually delivered.
             actionBtn.setEnabled(false);
-            actionBtn.setText("Uploading photo...");
+            actionBtn.setText(R.string.uploading_photo);
             api.postPhoto("/api/runner/trip/" + tripId + "/stage", fields, photo, (ok, data, err) -> {
                 if (!ok) {
                     actionBtn.setEnabled(true);
-                    actionBtn.setText("Take the handover photo");
+                    actionBtn.setText(R.string.btn_take_photo);
                     new AlertDialog.Builder(this)
-                            .setTitle("Photo not sent")
-                            .setMessage((err == null ? "Upload failed." : err)
-                                    + "\n\nThe photo is still on your phone. Move to a spot with signal and press the button again.")
-                            .setPositiveButton("OK", null)
+                            .setTitle(R.string.photo_not_sent_title)
+                            .setMessage(getString(R.string.photo_not_sent_msg,
+                                    Api.text(err)))
+                            .setPositiveButton(R.string.ok, null)
                             .show();
                     return;
                 }
                 trip = data;
-                Toast.makeText(this, "Job finished. Well done.", Toast.LENGTH_LONG).show();
+                Toast.makeText(this, R.string.job_finished, Toast.LENGTH_LONG).show();
                 finish();
             });
             return;
@@ -377,7 +376,7 @@ public class TripActivity extends AppCompatActivity {
                     localStatus = null;
                     localStatusAt = null;
                     if ("COMPLETED".equals(stage)) {
-                        Toast.makeText(this, "Job finished. Well done.", Toast.LENGTH_LONG).show();
+                        Toast.makeText(this, R.string.job_finished, Toast.LENGTH_LONG).show();
                         finish();
                         return;
                     }
@@ -385,20 +384,16 @@ public class TripActivity extends AppCompatActivity {
                     return;
                 }
 
-                boolean networkProblem = err == null || err.startsWith("No internet")
-                        || err.startsWith("Cannot reach") || err.startsWith("Server is slow");
-
-                if (networkProblem) {
+                if (Api.isNetwork(err)) {
                     // Keep the screen where the runner put it and let the queue carry it.
                     queue.addStage(tripId, stage, lat, lng, barcode, units, null);
                     paintOfflineNote();
-                    Toast.makeText(this, "Saved on your phone. It will reach the office automatically.",
-                            Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, R.string.saved_on_phone, Toast.LENGTH_SHORT).show();
                 } else {
                     // A real refusal from the server - roll the screen back and say why.
                     localStatus = null;
                     localStatusAt = null;
-                    Toast.makeText(this, err, Toast.LENGTH_LONG).show();
+                    Toast.makeText(this, Api.text(err), Toast.LENGTH_LONG).show();
                     load();
                 }
             });
@@ -436,7 +431,7 @@ public class TripActivity extends AppCompatActivity {
             if (target != null) number = target.optString("phone", "");
         }
         if (number.isEmpty() || "null".equals(number)) {
-            Toast.makeText(this, "No phone number on this job", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, R.string.no_phone_number, Toast.LENGTH_SHORT).show();
             return;
         }
         startActivity(new Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + number)));

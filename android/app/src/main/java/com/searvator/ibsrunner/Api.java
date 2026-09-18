@@ -125,7 +125,8 @@ public class Api {
         if (json.has("serverTime")) Clock.syncFromServer(ctx, json.optString("serverTime"));
 
         if (code == 401) return new JSONObject().put("__error", "__auth");
-        if (code >= 400) return new JSONObject().put("__error", json.optString("error", "Server said no (" + code + ")"));
+        if (code >= 400) return new JSONObject().put("__error",
+                json.optString("error", LocaleHelper.apply(ctx).getString(R.string.server_refused, code)));
         return json;
     }
 
@@ -194,7 +195,8 @@ public class Api {
         c.disconnect();
         JSONObject json = new JSONObject(text == null || text.isEmpty() ? "{}" : text);
         if (json.has("serverTime")) Clock.syncFromServer(ctx, json.optString("serverTime"));
-        if (code >= 400) return new JSONObject().put("__error", json.optString("error", "Upload failed"));
+        if (code >= 400) return new JSONObject().put("__error",
+                json.optString("error", LocaleHelper.apply(ctx).getString(R.string.upload_failed)));
         return json;
     }
 
@@ -209,11 +211,33 @@ public class Api {
     }
 
     /** Plain language, and never blames the runner for something the network did. */
+    /**
+     * Marks an error as "the network let us down" rather than "the server said no".
+     *
+     * These two cases are handled completely differently - a network failure keeps the
+     * runner's action and queues it, a server refusal rolls the screen back - so telling
+     * them apart has to be reliable. It used to be done by matching the English text of the
+     * message, which broke the moment the app gained Hindi and Gujarati. The marker is
+     * invisible, never shown, and never translated.
+     */
+    private static final String NET = "\u0000net\u0000";
+
+    public static boolean isNetwork(String err) {
+        return err == null || err.startsWith(NET);
+    }
+
+    /** The message to actually show a person, without the marker. */
+    public static String text(String err) {
+        if (err == null) return "";
+        return err.startsWith(NET) ? err.substring(NET.length()) : err;
+    }
+
     private static String friendly(Context c, Exception e) {
         String m = e.getMessage() == null ? "" : e.getMessage();
-        if (!online(c)) return "No internet. Your work is saved on the phone and will be sent automatically.";
-        if (m.contains("timed out") || m.contains("timeout")) return "Server is slow to answer. Trying again.";
-        if (m.contains("Unable to resolve host") || m.contains("Failed to connect")) return "Cannot reach the server right now.";
-        return "Could not reach the server.";
+        Context l = LocaleHelper.apply(c);
+        if (!online(c)) return NET + l.getString(R.string.net_saved_auto);
+        if (m.contains("timed out") || m.contains("timeout")) return NET + l.getString(R.string.net_slow);
+        if (m.contains("Unable to resolve host") || m.contains("Failed to connect")) return NET + l.getString(R.string.net_unreachable);
+        return NET + l.getString(R.string.net_failed);
     }
 }

@@ -8,8 +8,8 @@ android {
         applicationId "com.searvator.ibsrunner"
         minSdk 24
         targetSdk 34
-        versionCode 2
-        versionName "1.1"
+        versionCode 3
+        versionName "1.2"
         // Default server address. The runner can change it on the sign-in screen.
         buildConfigField "String", "DEFAULT_SERVER", "\"https://runnerapp-86d6.onrender.com\""
     }

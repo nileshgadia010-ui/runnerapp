@@ -42,7 +42,7 @@
                         android:id="@+id/hello"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Hello"
+                        android:text="@string/sign_in"
                         android:textColor="@color/paper"
                         android:textSize="21sp"
                         android:textStyle="bold" />
@@ -65,8 +65,24 @@
                     android:paddingRight="14dp"
                     android:paddingTop="7dp"
                     android:paddingBottom="7dp"
-                    android:text="Off duty"
+                    android:text="@string/duty_off"
                     android:textColor="@color/ink"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+
+                <!-- Language, kept next to sign out so both live-account controls sit together. -->
+                <TextView
+                    android:id="@+id/langBtn"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="10dp"
+                    android:background="@drawable/btn_ghost_light"
+                    android:paddingLeft="12dp"
+                    android:paddingRight="12dp"
+                    android:paddingTop="7dp"
+                    android:paddingBottom="7dp"
+                    android:text="EN"
+                    android:textColor="@color/paper"
                     android:textSize="12sp"
                     android:textStyle="bold" />
 
@@ -97,7 +113,7 @@
                 android:id="@+id/dutyCaption"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="TODAY ON DUTY"
+                android:text="@string/today_on_duty"
                 android:textColor="#7C8CA8"
                 android:textSize="11sp"
                 android:letterSpacing="0.14"
@@ -131,7 +147,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="KM TODAY"
+                        android:text="@string/km_today"
                         android:textColor="#7C8CA8"
                         android:textSize="10sp"
                         android:letterSpacing="0.1" />
@@ -159,7 +175,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="JOBS DONE"
+                        android:text="@string/jobs_done"
                         android:textColor="#7C8CA8"
                         android:textSize="10sp"
                         android:letterSpacing="0.1" />
@@ -187,7 +203,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="5 DAY HOURS"
+                        android:text="@string/five_day_hours"
                         android:textColor="#7C8CA8"
                         android:textSize="10sp"
                         android:letterSpacing="0.1" />
@@ -233,7 +249,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="60dp"
                 android:background="@drawable/btn_red"
-                android:text="PUNCH IN"
+                android:text="@string/punch_in"
                 android:textColor="@color/paper"
                 android:textSize="17sp"
                 android:letterSpacing="0.06"
@@ -246,7 +262,7 @@
                 android:layout_height="48dp"
                 android:layout_marginTop="10dp"
                 android:background="@drawable/btn_outline"
-                android:text="Take a break"
+                android:text="@string/take_break"
                 android:textColor="@color/ink_soft"
                 android:textSize="14sp"
                 android:textAllCaps="false"
@@ -275,7 +291,7 @@
                         android:layout_width="0dp"
                         android:layout_weight="1"
                         android:layout_height="wrap_content"
-                        android:text="RUNNING JOB"
+                        android:text="@string/running_job"
                         android:textColor="@color/crimson"
                         android:textSize="11sp"
                         android:letterSpacing="0.12"
@@ -331,7 +347,7 @@
                     android:layout_height="52dp"
                     android:layout_marginTop="14dp"
                     android:background="@drawable/btn_dark"
-                    android:text="OPEN JOB"
+                    android:text="@string/open_job"
                     android:textColor="@color/paper"
                     android:textSize="15sp"
                     android:letterSpacing="0.06"
@@ -350,7 +366,7 @@
                 android:textColor="@color/muted"
                 android:textSize="14sp"
                 android:lineSpacingExtra="4dp"
-                android:text="Punch in to start your shift." />
+                android:text="@string/punch_to_start" />
 
             <!-- trip history -->
             <TextView
@@ -358,7 +374,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="26dp"
                 android:layout_marginBottom="4dp"
-                android:text="YOUR JOBS"
+                android:text="@string/your_jobs"
                 android:textColor="@color/muted"
                 android:textSize="11sp"
                 android:letterSpacing="0.14"
@@ -378,7 +394,7 @@
                 android:background="@drawable/card_flat"
                 android:padding="20dp"
                 android:gravity="center"
-                android:text="No jobs yet."
+                android:text="@string/no_jobs_yet"
                 android:textColor="@color/muted"
                 android:textSize="14sp" />
 

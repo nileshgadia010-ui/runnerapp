@@ -18,7 +18,7 @@
             android:id="@+id/odoHead"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Bike meter reading"
+            android:text="@string/odo_start_title"
             android:textColor="@color/ink"
             android:textSize="26sp"
             android:textStyle="bold" />
@@ -28,7 +28,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
-            android:text="Take a clear photo of the meter, then type the number you see."
+            android:text="@string/odo_start_sub"
             android:textColor="@color/ink_soft"
             android:textSize="14sp"
             android:lineSpacingExtra="4dp" />
@@ -51,7 +51,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:gravity="center"
-                android:text="No photo yet"
+                android:text="@string/no_photo_yet"
                 android:textColor="@color/muted"
                 android:textSize="14sp" />
         </FrameLayout>
@@ -62,7 +62,7 @@
             android:layout_height="52dp"
             android:layout_marginTop="12dp"
             android:background="@drawable/btn_cobalt"
-            android:text="TAKE METER PHOTO"
+            android:text="@string/take_meter_photo"
             android:textColor="@color/paper"
             android:textSize="15sp"
             android:letterSpacing="0.05"
@@ -74,7 +74,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="22dp"
             android:layout_marginBottom="8dp"
-            android:text="METER READING (KM)"
+            android:text="@string/odo_reading_label"
             android:textColor="@color/muted"
             android:textSize="11sp"
             android:letterSpacing="0.12"
@@ -87,7 +87,7 @@
             android:background="@drawable/field_bg"
             android:paddingLeft="16dp"
             android:paddingRight="16dp"
-            android:hint="e.g. 42817"
+            android:hint="@string/odo_hint_example"
             android:inputType="number"
             android:textColor="@color/ink"
             android:textSize="26sp"
@@ -120,7 +120,7 @@
             android:layout_height="58dp"
             android:layout_marginTop="22dp"
             android:background="@drawable/btn_red"
-            android:text="CONTINUE"
+            android:text="@string/continue_btn"
             android:textColor="@color/paper"
             android:textSize="16sp"
             android:letterSpacing="0.06"
@@ -134,7 +134,7 @@
             android:layout_marginTop="16dp"
             android:padding="12dp"
             android:gravity="center"
-            android:text="Cancel"
+            android:text="@string/cancel"
             android:textColor="@color/muted"
             android:textSize="14sp" />
     </LinearLayout>

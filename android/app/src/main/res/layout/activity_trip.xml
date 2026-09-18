@@ -18,7 +18,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:padding="8dp"
-            android:text="Back"
+            android:text="@string/back"
             android:textColor="#B7BECC"
             android:textSize="14sp" />
 
@@ -70,7 +70,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="On this step"
+                        android:text="@string/on_this_step"
                         android:textColor="@color/muted"
                         android:textSize="12sp" />
                 </LinearLayout>
@@ -93,7 +93,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Since the job came"
+                        android:text="@string/since_job_came"
                         android:textColor="@color/muted"
                         android:textSize="12sp" />
                 </LinearLayout>
@@ -200,7 +200,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Pick up from"
+                    android:text="@string/pick_up_from"
                     android:textColor="@color/muted"
                     android:textSize="12sp" />
 
@@ -229,7 +229,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Drop at"
+                    android:text="@string/drop_at"
                     android:textColor="@color/muted"
                     android:textSize="12sp" />
 
@@ -260,7 +260,7 @@
                         android:layout_height="46dp"
                         android:layout_weight="1"
                         android:background="@drawable/btn_dark"
-                        android:text="Navigate"
+                        android:text="@string/navigate"
                         android:textAllCaps="false"
                         android:textColor="#FFFFFF" />
 
@@ -271,7 +271,7 @@
                         android:layout_marginLeft="10dp"
                         android:layout_weight="1"
                         android:background="@drawable/btn_outline"
-                        android:text="Call"
+                        android:text="@string/call"
                         android:textAllCaps="false"
                         android:textColor="@color/ink" />
                 </LinearLayout>
@@ -285,7 +285,7 @@
         android:layout_height="62dp"
         android:layout_margin="16dp"
         android:background="@drawable/btn_red"
-        android:text="Next step"
+        android:text="@string/next_step"
         android:textAllCaps="false"
         android:textColor="#FFFFFF"
         android:textSize="17sp"

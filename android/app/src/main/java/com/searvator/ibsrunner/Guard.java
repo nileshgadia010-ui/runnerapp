@@ -25,23 +25,15 @@ import java.io.File;
  */
 public class Guard {
 
-    /* ---- messages shown to the runner, in Gujarati ---- */
+    /* ---- messages ----
+     *
+     * These now live in strings.xml so they appear in whichever of the three languages the
+     * runner chose. Use the R.string ids directly; these helpers exist for code that only
+     * has a Context to hand. */
 
-    public static final String MSG_VPN =
-            "તમારા ફોનમાં VPN ચાલુ છે.\n\n" +
-            "VPN બંધ કરો, નહીં તો તમારો રિપોર્ટ ઓફિસ (એડમિન) ને મોકલવામાં આવશે.\n\n" +
-            "VPN બંધ કર્યા પછી જ કામ ચાલુ થશે.";
-
-    public static final String MSG_MOCK =
-            "ફોનમાં નકલી લોકેશન (Fake GPS) એપ ચાલુ છે.\n\n" +
-            "તે બંધ કરો, નહીં તો તમારો રિપોર્ટ ઓફિસ (એડમિન) ને મોકલવામાં આવશે.";
-
-    public static final String MSG_NO_NET =
-            "ઇન્ટરનેટ નથી.\n\n" +
-            "ચિંતા ન કરો - તમારું કામ ફોનમાં સેવ થઈ ગયું છે અને નેટ આવતાં જ ઓફિસે પહોંચી જશે.";
-
-    public static final String MSG_LOCATION_OFF =
-            "લોકેશન (GPS) બંધ છે.\n\nપંચ ઇન કરવા માટે લોકેશન ચાલુ કરો.";
+    public static String msgVpn(Context c) { return LocaleHelper.apply(c).getString(R.string.vpn_msg); }
+    public static String msgMock(Context c) { return LocaleHelper.apply(c).getString(R.string.mock_msg); }
+    public static String msgLocationOff(Context c) { return LocaleHelper.apply(c).getString(R.string.location_off_msg); }
 
     /* ---- VPN ---- */
 

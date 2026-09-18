@@ -23,7 +23,6 @@ import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
-import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 
 import org.json.JSONArray;
@@ -48,7 +47,7 @@ import java.util.Map;
  *  - The screen is readable offline. The last poll, summary and trip list are cached, so
  *    opening the app in a basement still shows the job and the day's numbers.
  */
-public class HomeActivity extends AppCompatActivity {
+public class HomeActivity extends BaseActivity {
 
     private static final int REQ_ODO_IN = 61;
     private static final int REQ_ODO_OUT = 62;
@@ -106,8 +105,9 @@ public class HomeActivity extends AppCompatActivity {
         setContentView(R.layout.activity_home);
         bind();
 
-        hello.setText("Hello, " + firstName(prefs.name()));
-        empLine.setText(prefs.empCode().isEmpty() ? "IBS Runner" : "IBS Runner  •  " + prefs.empCode());
+        hello.setText(getString(R.string.hello_name, firstName(prefs.name())));
+        empLine.setText(prefs.empCode().isEmpty() ? getString(R.string.runner_role)
+                : getString(R.string.runner_role) + "  •  " + prefs.empCode());
 
         Anim.press(punchBtn, breakBtn, openJobBtn);
         Anim.enter(findViewById(R.id.tileKm), 80);
@@ -119,6 +119,11 @@ public class HomeActivity extends AppCompatActivity {
         openJobBtn.setOnClickListener(v -> openTrip());
         jobCard.setOnClickListener(v -> openTrip());
         findViewById(R.id.signOutBtn).setOnClickListener(v -> signOut());
+
+        TextView lang = findViewById(R.id.langBtn);
+        lang.setText(LocaleHelper.shortLabel(LocaleHelper.current(this)));
+        Anim.press(lang);
+        lang.setOnClickListener(v -> showLanguagePicker());
 
         // Draw from cache immediately so the screen is never blank while the first call runs.
         restoreCached();
@@ -235,12 +240,12 @@ public class HomeActivity extends AppCompatActivity {
         double km = data.optDouble("kmToday", 0);
         kmToday.setText(String.format(java.util.Locale.US, "%.1f", km));
 
-        punchBtn.setText(onDuty ? "PUNCH OUT" : "PUNCH IN");
+        punchBtn.setText(getString(onDuty ? R.string.punch_out : R.string.punch_in));
         punchBtn.setBackgroundResource(onDuty ? R.drawable.btn_dark : R.drawable.btn_red);
         Anim.show(breakBtn, onDuty);
-        breakBtn.setText("BREAK".equals(duty) ? "End break" : "Take a break");
+        breakBtn.setText(getString("BREAK".equals(duty) ? R.string.end_break : R.string.take_break));
 
-        dutyChip.setText(label(duty));
+        dutyChip.setText(dutyLabel(duty));
         dutyChip.setBackgroundResource("AVAILABLE".equals(duty) ? R.drawable.chip_green
                 : "ON_TRIP".equals(duty) ? R.drawable.chip_blue
                 : "BREAK".equals(duty) ? R.drawable.chip_amber : R.drawable.chip_grey);
@@ -265,7 +270,7 @@ public class HomeActivity extends AppCompatActivity {
             if (!trip.isNull("targetKm")) {
                 double d = trip.optDouble("targetKm", 0);
                 int eta = trip.optInt("targetEtaMin", 0);
-                jobDistance.setText("≈ " + String.format(java.util.Locale.US, "%.1f", d) + " km  •  about " + eta + " min");
+                jobDistance.setText("≈ " + getString(R.string.km_away, String.format(java.util.Locale.US, "%.1f", d), eta));
                 Anim.show(jobDistance, true);
             } else {
                 Anim.show(jobDistance, false);
@@ -277,9 +282,7 @@ public class HomeActivity extends AppCompatActivity {
             jobAnchorAt = null;
             Anim.show(jobCard, false);
             Anim.show(freeNote, true);
-            freeNote.setText(onDuty
-                    ? "You are free.\nThe phone will ring when a job comes."
-                    : "Punch in to start your shift.");
+            freeNote.setText(getString(onDuty ? R.string.free_waiting : R.string.punch_to_start));
         }
 
         paintTimers();
@@ -294,7 +297,7 @@ public class HomeActivity extends AppCompatActivity {
             if (ms > 0) seconds += ms / 1000;
         }
         dutyTimer.setText(Clock.hms(seconds));
-        dutyCaption.setText(prefs.onDuty() ? "TODAY ON DUTY" : "TODAY ON DUTY (SHIFT CLOSED)");
+        dutyCaption.setText(getString(prefs.onDuty() ? R.string.today_on_duty : R.string.today_on_duty_closed));
 
         if (jobAnchorAt != null) {
             long ms = Clock.since(jobAnchorAt);
@@ -308,14 +311,9 @@ public class HomeActivity extends AppCompatActivity {
 
         if (offline || pending > 0) {
             String msg;
-            if (offline && pending > 0) {
-                msg = "No internet. " + pending + " " + (pending == 1 ? "action is" : "actions are")
-                        + " saved on your phone and will be sent automatically when the network returns.";
-            } else if (offline) {
-                msg = "No internet right now. Your work is being saved on the phone - keep going as normal.";
-            } else {
-                msg = "Sending " + pending + " saved " + (pending == 1 ? "action" : "actions") + " to the office...";
-            }
+            if (offline && pending > 0) msg = getString(R.string.offline_pending, pending);
+            else if (offline) msg = getString(R.string.offline_no_net);
+            else msg = getString(R.string.offline_sending, pending);
             offlineBanner.setText(msg);
             Anim.show(offlineBanner, true);
         } else {
@@ -323,7 +321,7 @@ public class HomeActivity extends AppCompatActivity {
         }
 
         if (Guard.vpnOn(this)) {
-            warnBanner.setText(Guard.MSG_VPN);
+            warnBanner.setText(R.string.vpn_msg);
             Anim.show(warnBanner, true);
         } else {
             Anim.show(warnBanner, false);
@@ -375,8 +373,8 @@ public class HomeActivity extends AppCompatActivity {
             View header = inf.inflate(R.layout.item_day, tripList, false);
             TextView label = header.findViewById(R.id.dayLabel);
             TextView stats = header.findViewById(R.id.dayStats);
-            label.setText(Clock.dayLabel(day.optString("date"), today));
-            stats.setText(day.optInt("done") + " of " + day.optInt("total") + " done");
+            label.setText(Clock.dayLabel(this, day.optString("date"), today));
+            stats.setText(getString(R.string.x_of_y_done, day.optInt("done"), day.optInt("total")));
             tripList.addView(header);
 
             JSONArray trips = day.optJSONArray("trips");
@@ -416,7 +414,7 @@ public class HomeActivity extends AppCompatActivity {
                 JSONObject parts = tat.optJSONObject("parts");
                 if (parts != null && parts.optJSONObject("total") != null) {
                     double v = parts.optJSONObject("total").optDouble("value", 0);
-                    total = "  •  took " + Clock.hm(Math.round(v));
+                    total = "  •  " + getString(R.string.took_time, Clock.hm(Math.round(v)));
                 }
             }
             meta.setText(when + total);
@@ -424,7 +422,7 @@ public class HomeActivity extends AppCompatActivity {
             meta.setText(when + "  •  " + t.optString("statusLabel"));
         }
 
-        chip.setText(done ? "DONE" : dead ? "CLOSED" : "LIVE");
+        chip.setText(getString(done ? R.string.chip_done : dead ? R.string.chip_closed : R.string.chip_live));
         chip.setBackgroundResource(done ? R.drawable.chip_green : dead ? R.drawable.chip_grey : R.drawable.chip_red);
         chip.setTextColor(getResources().getColor(done ? R.color.jade : dead ? R.color.muted : R.color.crimson));
         bar.setBackgroundResource(done ? R.drawable.chip_green : dead ? R.drawable.chip_grey : R.drawable.chip_red);
@@ -449,11 +447,11 @@ public class HomeActivity extends AppCompatActivity {
             Location l = lastLocation();
             if (l == null) {
                 new AlertDialog.Builder(this)
-                        .setTitle("લોકેશન ચાલુ કરો")
-                        .setMessage(Guard.MSG_LOCATION_OFF)
-                        .setPositiveButton("Open settings", (d, w) ->
+                        .setTitle(R.string.location_off_title)
+                        .setMessage(R.string.location_off_msg)
+                        .setPositiveButton(R.string.open_settings, (d, w) ->
                                 startActivity(new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)))
-                        .setNegativeButton("Cancel", null)
+                        .setNegativeButton(R.string.cancel, null)
                         .show();
                 return;
             }
@@ -468,7 +466,7 @@ public class HomeActivity extends AppCompatActivity {
         }
 
         if (activeTripId != null) {
-            Toast.makeText(this, "Finish your running job before punching out", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, R.string.finish_job_first, Toast.LENGTH_LONG).show();
             return;
         }
 
@@ -506,7 +504,7 @@ public class HomeActivity extends AppCompatActivity {
         optimisticUntil = Clock.now() + 12000;
         prefs.setOnDuty(in);
         prefs.setLastOdo(odo);
-        punchBtn.setText(in ? "PUNCH OUT" : "PUNCH IN");
+        punchBtn.setText(getString(in ? R.string.punch_out : R.string.punch_in));
         punchBtn.setBackgroundResource(in ? R.drawable.btn_dark : R.drawable.btn_red);
         if (in) {
             dutyStartedAt = Clock.nowIso();
@@ -516,7 +514,7 @@ public class HomeActivity extends AppCompatActivity {
             DutyService.stop(this);
         }
         paintTimers();
-        Toast.makeText(this, in ? "Punched in" : "Punched out", Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, in ? R.string.punched_in : R.string.punched_out, Toast.LENGTH_SHORT).show();
 
         // 2. Upload behind it.
         Map<String, String> fields = new HashMap<>();
@@ -535,33 +533,31 @@ public class HomeActivity extends AppCompatActivity {
             }
             // Server said no for a real reason (already punched in, job still running):
             // undo the optimistic flip so the screen tells the truth.
-            if (err != null && !err.startsWith("No internet") && !err.startsWith("Cannot reach")
-                    && !err.startsWith("Server is slow")) {
+            if (!Api.isNetwork(err)) {
                 optimisticOnDuty = null;
                 prefs.setOnDuty(!in);
-                Toast.makeText(this, err, Toast.LENGTH_LONG).show();
+                Toast.makeText(this, Api.text(err), Toast.LENGTH_LONG).show();
                 ui.post(poll);
                 return;
             }
             // Network problem: keep the punch, queue it, tell him it is safe.
             queue.addPunch(in, lat, lng, odo);
             paintBanners();
-            Toast.makeText(this, "Saved on your phone. It will reach the office automatically.",
-                    Toast.LENGTH_LONG).show();
+            Toast.makeText(this, R.string.saved_on_phone, Toast.LENGTH_LONG).show();
         });
     }
 
     private void toggleBreak() {
         final boolean onBreak = "BREAK".equals(state.optString("dutyState"));
-        breakBtn.setText(onBreak ? "Take a break" : "End break");
+        breakBtn.setText(getString(onBreak ? R.string.take_break : R.string.end_break));
         try {
             api.post("/api/runner/break", new JSONObject().put("on", !onBreak), (ok, data, err) -> {
                 if (!ok) {
-                    if (err != null && err.startsWith("No internet")) {
+                    if (Api.isNetwork(err)) {
                         queue.addBreak(!onBreak);
                         paintBanners();
                     } else {
-                        Toast.makeText(this, err, Toast.LENGTH_LONG).show();
+                        Toast.makeText(this, Api.text(err), Toast.LENGTH_LONG).show();
                     }
                 }
                 ui.post(poll);
@@ -578,20 +574,20 @@ public class HomeActivity extends AppCompatActivity {
 
     private void signOut() {
         if (prefs.onDuty()) {
-            Toast.makeText(this, "Punch out before signing out", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, R.string.punch_out_first, Toast.LENGTH_LONG).show();
             return;
         }
         new AlertDialog.Builder(this)
-                .setTitle("Sign out?")
-                .setMessage("You will have to enter your user ID and password again.")
-                .setPositiveButton("Sign out", (d, w) -> {
+                .setTitle(R.string.sign_out_q)
+                .setMessage(R.string.sign_out_msg)
+                .setPositiveButton(R.string.sign_out, (d, w) -> {
                     DutyService.stop(this);
                     prefs.clearSession();
                     prefs.setOnDuty(false);
                     startActivity(new Intent(this, LoginActivity.class));
                     finish();
                 })
-                .setNegativeButton("Stay", null)
+                .setNegativeButton(R.string.stay, null)
                 .show();
     }
 
@@ -599,14 +595,14 @@ public class HomeActivity extends AppCompatActivity {
     private boolean checkVpn() {
         if (!Guard.vpnOn(this)) return true;
         new AlertDialog.Builder(this)
-                .setTitle("VPN બંધ કરો")
-                .setMessage(Guard.MSG_VPN)
+                .setTitle(R.string.vpn_title)
+                .setMessage(R.string.vpn_msg)
                 .setCancelable(false)
                 .setPositiveButton("Settings", (d, w) -> {
                     try { startActivity(new Intent(Settings.ACTION_VPN_SETTINGS)); }
                     catch (Exception e) { startActivity(new Intent(Settings.ACTION_SETTINGS)); }
                 })
-                .setNegativeButton("OK", null)
+                .setNegativeButton(R.string.ok, null)
                 .show();
         paintBanners();
         return false;
@@ -620,12 +616,12 @@ public class HomeActivity extends AppCompatActivity {
         return sp > 0 ? full.substring(0, sp) : full;
     }
 
-    static String label(String duty) {
+    String dutyLabel(String duty) {
         switch (duty) {
-            case "AVAILABLE": return "Free";
-            case "ON_TRIP": return "On a job";
-            case "BREAK": return "On break";
-            default: return "Off duty";
+            case "AVAILABLE": return getString(R.string.duty_free);
+            case "ON_TRIP": return getString(R.string.duty_on_trip);
+            case "BREAK": return getString(R.string.duty_break);
+            default: return getString(R.string.duty_off);
         }
     }
 
@@ -672,11 +668,11 @@ public class HomeActivity extends AppCompatActivity {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
                 ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_BACKGROUND_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             new AlertDialog.Builder(this)
-                    .setTitle("Keep location on in the background")
-                    .setMessage("The desk needs to see where you are even when the screen is off. On the next screen choose Allow all the time.")
-                    .setPositiveButton("Continue", (d, w) ->
+                    .setTitle(R.string.bg_loc_title)
+                    .setMessage(R.string.bg_loc_msg)
+                    .setPositiveButton(R.string.continue_btn, (d, w) ->
                             ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_BACKGROUND_LOCATION}, 12))
-                    .setNegativeButton("Later", (d, w) -> batteryPrompt())
+                    .setNegativeButton(R.string.later, (d, w) -> batteryPrompt())
                     .show();
         } else {
             batteryPrompt();
@@ -688,14 +684,14 @@ public class HomeActivity extends AppCompatActivity {
             android.os.PowerManager pm = (android.os.PowerManager) getSystemService(Context.POWER_SERVICE);
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !pm.isIgnoringBatteryOptimizations(getPackageName())) {
                 new AlertDialog.Builder(this)
-                        .setTitle("Stop the phone from closing the app")
-                        .setMessage("Allow the IBS Runner app to keep running in the background, otherwise the job alarm may not ring.")
-                        .setPositiveButton("Allow", (d, w) -> {
+                        .setTitle(R.string.battery_title)
+                        .setMessage(R.string.battery_msg)
+                        .setPositiveButton(R.string.allow, (d, w) -> {
                             Intent i = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
                             i.setData(Uri.parse("package:" + getPackageName()));
                             try { startActivity(i); } catch (Exception ignored) { }
                         })
-                        .setNegativeButton("Later", null)
+                        .setNegativeButton(R.string.later, null)
                         .show();
             }
         } catch (Exception ignored) { }

@@ -19,7 +19,7 @@
         <!-- brand -->
         <LinearLayout
             android:id="@+id/brandRow"
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:gravity="center_vertical">
@@ -38,7 +38,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="IBS RUNNER"
+                    android:text="@string/brand_title"
                     android:textColor="@color/paper"
                     android:textSize="20sp"
                     android:letterSpacing="0.12"
@@ -47,10 +47,31 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Indian Blood Service"
+                    android:text="@string/brand_sub"
                     android:textColor="#93A3BC"
                     android:textSize="12sp" />
             </LinearLayout>
+
+            <View
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_weight="1" />
+
+            <!-- Language picker, right where a runner looks first. Shows the current language
+                 in its own script, so it is recognisable without reading English. -->
+            <TextView
+                android:id="@+id/langBtn"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/btn_ghost_light"
+                android:paddingLeft="16dp"
+                android:paddingRight="16dp"
+                android:paddingTop="10dp"
+                android:paddingBottom="10dp"
+                android:text="EN"
+                android:textColor="@color/paper"
+                android:textSize="14sp"
+                android:textStyle="bold" />
         </LinearLayout>
 
         <View
@@ -63,7 +84,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="48dp"
-            android:text="Sign in"
+            android:text="@string/sign_in"
             android:textColor="@color/paper"
             android:textSize="30sp"
             android:textStyle="bold" />
@@ -73,7 +94,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
-            android:text="Use the ID and password the office gave you"
+            android:text="@string/sign_in_sub"
             android:textColor="#93A3BC"
             android:textSize="14sp" />
 
@@ -82,7 +103,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="28dp"
             android:layout_marginBottom="8dp"
-            android:text="USER ID"
+            android:text="@string/user_id"
             android:textColor="#7C8CA8"
             android:textSize="11sp"
             android:letterSpacing="0.1"
@@ -108,7 +129,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="18dp"
             android:layout_marginBottom="8dp"
-            android:text="PASSWORD"
+            android:text="@string/password"
             android:textColor="#7C8CA8"
             android:textSize="11sp"
             android:letterSpacing="0.1"
@@ -142,7 +163,7 @@
                 android:gravity="center"
                 android:paddingLeft="14dp"
                 android:paddingRight="16dp"
-                android:text="SHOW"
+                android:text="@string/show"
                 android:textColor="#93A3BC"
                 android:textSize="12sp"
                 android:textStyle="bold" />
@@ -165,7 +186,7 @@
             android:layout_height="58dp"
             android:layout_marginTop="24dp"
             android:background="@drawable/btn_red"
-            android:text="SIGN IN"
+            android:text="@string/sign_in_btn"
             android:textColor="@color/paper"
             android:textSize="16sp"
             android:letterSpacing="0.06"
@@ -200,7 +221,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="8dp"
-                android:text="SERVER ADDRESS"
+                android:text="@string/server_address"
                 android:textColor="#7C8CA8"
                 android:textSize="11sp"
                 android:letterSpacing="0.1"
@@ -225,7 +246,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="28dp"
             android:gravity="center"
-            android:text="Searvator IT Solutions"
+            android:text="@string/footer_credit"
             android:textColor="#55637C"
             android:textSize="12sp" />
     </LinearLayout>
