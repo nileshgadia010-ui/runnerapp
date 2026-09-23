@@ -211,4 +211,16 @@
     <string name="st_package_taken">Package picked up</string>
     <string name="st_payment_handed">Payment handed over</string>
     <string name="st_payment_taken">Payment collected</string>
+    <string name="barcode_optional">Tube number (optional)</string>
+    <string name="btn_got_it_going">Got it, leaving now</string>
+    <string name="btn_handed_over">Handed over - job done</string>
+    <string name="btn_money_going">Got the money, leaving now</string>
+    <string name="btn_parcel_going">Got the parcel, leaving now</string>
+    <string name="btn_photo_done">Take photo and finish</string>
+    <string name="btn_reached">I have reached</string>
+    <string name="btn_reached_at">I have reached %1$s</string>
+    <string name="btn_units_going">Units loaded, leaving now</string>
+    <string name="near_target">You are at %1$s</string>
+    <string name="skip">Skip</string>
+    <string name="step_of">Step %1$d of 3</string>
 </resources>

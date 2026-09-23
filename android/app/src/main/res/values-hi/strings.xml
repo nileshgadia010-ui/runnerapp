@@ -211,4 +211,16 @@
     <string name="st_package_taken">पार्सल ले लिया</string>
     <string name="st_payment_handed">पैसे जमा कर दिए</string>
     <string name="st_payment_taken">पैसे ले लिए</string>
+    <string name="barcode_optional">ट्यूब नंबर (जरूरी नहीं)</string>
+    <string name="btn_got_it_going">मिल गया, निकल रहा हूं</string>
+    <string name="btn_handed_over">दे दिया - काम पूरा</string>
+    <string name="btn_money_going">पैसे मिल गए, निकल रहा हूं</string>
+    <string name="btn_parcel_going">पार्सल मिल गया, निकल रहा हूं</string>
+    <string name="btn_photo_done">फोटो लेकर पूरा करें</string>
+    <string name="btn_reached">मैं पहुंच गया</string>
+    <string name="btn_reached_at">मैं %1$s पहुंच गया</string>
+    <string name="btn_units_going">यूनिट ले ली, निकल रहा हूं</string>
+    <string name="near_target">आप %1$s पर हैं</string>
+    <string name="skip">छोड़ें</string>
+    <string name="step_of">स्टेप %1$d / 3</string>
 </resources>

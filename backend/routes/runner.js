@@ -67,7 +67,11 @@ function place(p) {
   if (!p) return null;
   return {
     name: p.name, address: p.address, area: p.area, phone: p.phone,
-    lat: p.lat, lng: p.lng, contactPerson: p.contactPerson
+    lat: p.lat, lng: p.lng, contactPerson: p.contactPerson,
+    // The app uses this to tell the runner he has arrived, so it has to travel with the
+    // place rather than being a constant baked into the phone. A small clinic and a
+    // sprawling civil hospital do not deserve the same circle.
+    geofence: p.geofence || 200
   };
 }
 
@@ -638,6 +642,31 @@ router.post('/integrity', async (req, res) => {
     await req.user.save();
   }
   res.json({ ok: true, integrity, serverTime: new Date() });
+});
+
+/*
+ * Attaches a detail to a trip after the fact, without moving its stage.
+ *
+ * The sample barcode used to block the runner in a hospital corridor: he could not tell us
+ * he was leaving until he had typed a tube number. Now the stage goes first and the barcode
+ * arrives here a moment later, if he has it. Nothing about the trip's timeline moves.
+ */
+router.post('/trip/:id/note', async (req, res) => {
+  const trip = await Trip.findById(req.params.id);
+  if (!trip) return res.status(404).json({ error: 'Job not found' });
+  if (String(trip.runner) !== String(req.user._id)) {
+    return res.status(403).json({ error: 'This job is not assigned to you' });
+  }
+
+  if (req.body.barcode) trip.sampleBarcode = String(req.body.barcode).slice(0, 60);
+  if (req.body.note) trip.runnerNote = String(req.body.note).slice(0, 300);
+  await trip.save();
+
+  realtime.emit('trip:update', {
+    tripId: String(trip._id), status: trip.status,
+    runnerId: String(req.user._id), caseId: String(trip.case)
+  });
+  res.json({ ok: true, serverTime: new Date() });
 });
 
 // Plain clock endpoint. The app calls it on start so its timers are anchored to the

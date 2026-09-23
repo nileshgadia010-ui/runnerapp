@@ -54,7 +54,7 @@ public class TripActivity extends BaseActivity {
     private String localStatusAt = null;
 
     private TextView headline, patient, meta, ward, pickupName, pickupSub, dropName, dropSub,
-            stageText, stageTimer, totalTimer, remarks, barcodeLine, distanceLine, offlineNote;
+            stageText, stageTimer, totalTimer, remarks, barcodeLine, distanceLine, offlineNote, stepLine;
     private Button actionBtn, navBtn, callBtn;
 
     @Override
@@ -82,6 +82,7 @@ public class TripActivity extends BaseActivity {
         barcodeLine = findViewById(R.id.tBarcode);
         distanceLine = findViewById(R.id.tDistance);
         offlineNote = findViewById(R.id.tOffline);
+        stepLine = findViewById(R.id.tStep);
         actionBtn = findViewById(R.id.tAction);
         navBtn = findViewById(R.id.tNavigate);
         callBtn = findViewById(R.id.tCall);
@@ -102,9 +103,50 @@ public class TripActivity extends BaseActivity {
     private final Runnable ticker = new Runnable() {
         @Override public void run() {
             paintTimers();
+            markArrivalAtDrop();
             ui.postDelayed(this, 1000);
         }
     };
+
+    /** Set once the drop arrival has been recorded, so it is never sent twice. */
+    private boolean dropArrivalSent = false;
+
+    /**
+     * Records arrival at the drop point on its own, from the geofence.
+     *
+     * Collapsing the trip to three taps costs one measurement: with a single tap at the end,
+     * the minutes he spends waiting at the counter get counted as riding time, and the desk
+     * loses the ability to say "the hospital kept him waiting". That number is worth having,
+     * and it does not need a button - the phone already knows when it crossed the geofence.
+     *
+     * This is safe to infer where completing the job is not. It moves no work forward and
+     * hands nothing over; it only marks a moment, and the runner still has to say he handed
+     * over. If GPS is optimistic the dwell reads a minute long, which is a far smaller error
+     * than not measuring it at all.
+     */
+    private void markArrivalAtDrop() {
+        if (dropArrivalSent || trip == null || tripId == null) return;
+
+        String st = status();
+        if (!"PICKED".equals(st) && !"EN_ROUTE_DROP".equals(st)) return;
+        if (!atTarget()) return;
+
+        dropArrivalSent = true;
+        Location l = lastLocation();
+        try {
+            JSONObject body = new JSONObject().put("stage", "AT_DROP").put("at", Clock.nowIso());
+            if (l != null) { body.put("lat", l.getLatitude()); body.put("lng", l.getLongitude()); }
+            api.post("/api/runner/trip/" + tripId + "/stage", body, (ok, data, err) -> {
+                if (ok) { trip = data; paint(); }
+                else if (Api.isNetwork(err)) {
+                    queue.addStage(tripId, "AT_DROP",
+                            l != null ? l.getLatitude() : 0, l != null ? l.getLongitude() : 0,
+                            null, null, null);
+                }
+                // A refusal from the server means the stage moved on already - nothing to do.
+            });
+        } catch (Exception ignored) { }
+    }
 
     private void load() {
         api.get("/api/runner/trip/active", (ok, data, err) -> {
@@ -115,6 +157,7 @@ public class TripActivity extends BaseActivity {
                 finish();
                 return;
             }
+            if (!data.optString("id").equals(tripId)) dropArrivalSent = false;
             trip = data;
             tripId = data.optString("id");
             // The server has caught up with the local tap - drop the optimistic state.
@@ -174,6 +217,14 @@ public class TripActivity extends BaseActivity {
         barcodeLine.setVisibility(bc.isEmpty() ? View.GONE : View.VISIBLE);
 
         String[] next = nextStage(trip.optString("type"), status());
+        int step = stepNumber(status());
+        if (step > 0 && next != null) {
+            stepLine.setText(getString(R.string.step_of, step));
+            Anim.show(stepLine, true);
+        } else {
+            Anim.show(stepLine, false);
+        }
+
         if (next == null) {
             Anim.show(actionBtn, false);
             stageText.setText(getString(isBlood()
@@ -183,6 +234,21 @@ public class TripActivity extends BaseActivity {
             actionBtn.setVisibility(View.VISIBLE);
             actionBtn.setEnabled(true);
             actionBtn.setText(next[1]);
+
+            // Once he is actually standing at the place, the button turns green and says so.
+            // It does not press itself - a GPS fix is not proof of arrival, and a wrong
+            // timestamp in the TAT report is worse than one extra tap - but it removes the
+            // hesitation about whether this is the right moment.
+            boolean here = atTarget();
+            actionBtn.setBackgroundResource(here ? R.drawable.btn_green : R.drawable.btn_red);
+            if (here && "AT_PICKUP".equals(next[0])) {
+                JSONObject t = trip.optJSONObject("target");
+                String nm = t != null ? t.optString("name", "") : "";
+                if (!nm.isEmpty()) {
+                    stepLine.setText(getString(R.string.near_target, nm));
+                    Anim.show(stepLine, true);
+                }
+            }
         }
 
         paintOfflineNote();
@@ -285,26 +351,101 @@ public class TripActivity extends BaseActivity {
         }
     }
 
-    /** The one place that decides what the big button does next. */
+    /*
+     * The one place that decides what the big button does next.
+     *
+     * The stage machine has seven stops, but a runner only ever has three things to tell us:
+     * he arrived, he has the thing and is leaving, he handed it over. Pressing a button for
+     * "I am on my way" twice per trip is work that buys nobody anything - the server infers
+     * those two stages from the ones either side, so the TAT report is unchanged while the
+     * runner presses three buttons instead of seven.
+     *
+     * Returns { stage to send, button label }.
+     */
     String[] nextStage(String type, String status) {
         boolean sample = "SAMPLE_PICKUP".equals(type);
         boolean bloodJob = sample || "BLOOD_DELIVERY".equals(type);
+        boolean payment = "PAYMENT_COLLECT".equals(type);
+        boolean parcel = "PACKAGE_DELIVER".equals(type);
+
         switch (status) {
-            case "ASSIGNED": return new String[]{"ACCEPTED", getString(R.string.btn_accept_job)};
-            case "ACCEPTED": return new String[]{"EN_ROUTE_PICKUP", getString(sample ? R.string.btn_start_hosp : R.string.btn_start_centre)};
-            case "EN_ROUTE_PICKUP": return new String[]{"AT_PICKUP", getString(sample ? R.string.btn_reached_hosp : R.string.btn_reached_centre)};
+            case "ASSIGNED":
+                return new String[]{"ACCEPTED", getString(R.string.btn_accept_job)};
+
+            // 1 of 3 - reached the pickup. EN_ROUTE_PICKUP is filled in behind him.
+            case "ACCEPTED":
+            case "EN_ROUTE_PICKUP":
+                return new String[]{"AT_PICKUP", reachedLabel(true)};
+
+            // 2 of 3 - has it in hand and is moving. EN_ROUTE_DROP is filled in behind him.
             case "AT_PICKUP":
-                if ("PAYMENT_COLLECT".equals(type)) return new String[]{"PICKED", getString(R.string.btn_payment_taken)};
-                if ("PACKAGE_DELIVER".equals(type)) return new String[]{"PICKED", getString(R.string.btn_package_taken)};
-                return new String[]{"PICKED", getString(sample || !bloodJob ? R.string.btn_sample_collected : R.string.btn_units_collected)};
-            case "PICKED": return new String[]{"EN_ROUTE_DROP", getString(sample ? R.string.btn_start_back_centre : R.string.btn_start_hosp)};
-            case "EN_ROUTE_DROP": return new String[]{"AT_DROP", getString(sample ? R.string.btn_reached_centre : R.string.btn_reached_hosp)};
+                if (payment) return new String[]{"PICKED", getString(R.string.btn_money_going)};
+                if (parcel) return new String[]{"PICKED", getString(R.string.btn_parcel_going)};
+                if (bloodJob && !sample) return new String[]{"PICKED", getString(R.string.btn_units_going)};
+                return new String[]{"PICKED", getString(R.string.btn_got_it_going)};
+
+            // 3 of 3 - handed over. AT_DROP is stamped at the same moment.
+            case "PICKED":
+            case "EN_ROUTE_DROP":
             case "AT_DROP":
-                if ("PAYMENT_COLLECT".equals(type)) return new String[]{"COMPLETED", getString(R.string.btn_payment_handed)};
-                if ("PACKAGE_DELIVER".equals(type)) return new String[]{"COMPLETED", getString(R.string.btn_take_photo)};
-                return new String[]{"COMPLETED", getString(sample ? R.string.btn_sample_handed : R.string.btn_take_photo)};
-            default: return null;
+                return new String[]{"COMPLETED", needsProof(type)
+                        ? getString(R.string.btn_photo_done)
+                        : getString(R.string.btn_handed_over)};
+
+            default:
+                return null;
         }
+    }
+
+    /**
+     * Is he inside the geofence of the place he is heading for? The radius comes from the
+     * place record, so the desk controls how tight it is per hospital - a small clinic and a
+     * sprawling civil hospital do not deserve the same circle.
+     */
+    private boolean atTarget() {
+        JSONObject target = trip.optJSONObject("target");
+        if (target == null) return false;
+        Location l = lastLocation();
+        if (l == null) return false;
+
+        double tLat = target.optDouble("lat", 0), tLng = target.optDouble("lng", 0);
+        if (tLat == 0 && tLng == 0) return false;
+
+        float[] out = new float[1];
+        Location.distanceBetween(l.getLatitude(), l.getLongitude(), tLat, tLng, out);
+        double radius = target.optDouble("geofence", 200);
+        if (radius <= 0) radius = 200;
+        return out[0] <= radius;
+    }
+
+    /** Which step of three he is on, for the small line above the button. */
+    private int stepNumber(String status) {
+        switch (status) {
+            case "ACCEPTED": case "EN_ROUTE_PICKUP": return 1;
+            case "AT_PICKUP": return 2;
+            case "PICKED": case "EN_ROUTE_DROP": case "AT_DROP": return 3;
+            default: return 0;
+        }
+    }
+
+    /**
+     * "I have reached Civil Hospital" reads better than "I have reached" on its own, and it
+     * is also a check: the name on the button is the place he is meant to be standing in.
+     */
+    private String reachedLabel(boolean pickup) {
+        JSONObject target = trip.optJSONObject("target");
+        if (target == null) target = trip.optJSONObject(pickup ? "pickup" : "drop");
+        String name = target != null ? target.optString("name", "") : "";
+        return name.isEmpty() ? getString(R.string.btn_reached) : getString(R.string.btn_reached_at, name);
+    }
+
+    /**
+     * A photo is the proof for the two jobs where something physical changes hands and
+     * somebody might later dispute it: blood units at a bedside, and a parcel. A sample
+     * going back to our own centre and cash handed to our own office do not need one.
+     */
+    private boolean needsProof(String type) {
+        return "BLOOD_DELIVERY".equals(type) || "PACKAGE_DELIVER".equals(type);
     }
 
     private void advance() {
@@ -314,39 +455,61 @@ public class TripActivity extends BaseActivity {
         String stage = next[0];
 
         if ("PICKED".equals(stage)) { askExtra(type); return; }
-
-        // A photo is the proof for the two jobs where something physical changes hands and
-        // somebody might later dispute it: blood units at a bedside, and a parcel. A sample
-        // going back to our own centre and cash handed to our own office do not need one.
-        boolean needsProof = "BLOOD_DELIVERY".equals(type) || "PACKAGE_DELIVER".equals(type);
-        if ("COMPLETED".equals(stage) && needsProof) { takePhoto(); return; }
+        if ("COMPLETED".equals(stage) && needsProof(type)) { takePhoto(); return; }
 
         send(stage, null, null, null);
     }
 
     /**
-     * What to capture when the runner says he has the thing in his hand. Each job type has
-     * exactly one number worth asking for, and nothing else: the tube's barcode, how many
-     * units, or how much money. A parcel needs nothing - he either has it or he does not.
+     * What to capture when the runner says he has the thing in his hand.
+     *
+     * Only asked where the number IS the job - how much money, how many units. A tube
+     * barcode is useful but not worth standing in a hospital corridor for, so the stage is
+     * sent first and the barcode asked afterwards; dismissing that box costs him nothing and
+     * the trip has already moved on. A parcel is asked nothing at all.
      */
     private void askExtra(String type) {
         if ("PACKAGE_DELIVER".equals(type)) { send("PICKED", null, null, null); return; }
-
         if ("PAYMENT_COLLECT".equals(type)) { askPayment(); return; }
 
         boolean sample = "SAMPLE_PICKUP".equals(type) || "COLLECTION_SAMPLE".equals(type);
-        EditText input = new EditText(this);
-        if (sample) input.setHint(R.string.barcode_hint);
-        else { input.setHint(R.string.units_hint); input.setInputType(android.text.InputType.TYPE_CLASS_NUMBER); }
 
+        if (sample) {
+            // Move first, ask second.
+            send("PICKED", null, null, null);
+            askBarcodeLater();
+            return;
+        }
+
+        final EditText input = new EditText(this);
+        input.setHint(R.string.units_hint);
+        input.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
         new AlertDialog.Builder(this)
-                .setTitle(getString(sample ? R.string.btn_sample_collected : R.string.units_collected_title))
+                .setTitle(R.string.units_collected_title)
+                .setView(input)
+                .setPositiveButton(R.string.save, (d, w) ->
+                        send("PICKED", null, input.getText().toString().trim(), null))
+                .setNegativeButton(R.string.skip, (d, w) -> send("PICKED", null, null, null))
+                .show();
+    }
+
+    /** Optional, and never in the way - the trip has already advanced by the time this shows. */
+    private void askBarcodeLater() {
+        final EditText input = new EditText(this);
+        input.setHint(R.string.barcode_optional);
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.barcode_optional)
                 .setView(input)
                 .setPositiveButton(R.string.save, (d, w) -> {
                     String v = input.getText().toString().trim();
-                    send("PICKED", sample ? v : null, sample ? null : v, null);
+                    if (v.isEmpty() || tripId == null) return;
+                    try {
+                        JSONObject body = new JSONObject().put("stage", status())
+                                .put("barcode", v).put("at", Clock.nowIso());
+                        api.post("/api/runner/trip/" + tripId + "/note", body, (ok, d2, e2) -> { });
+                    } catch (Exception ignored) { }
                 })
-                .setNegativeButton(R.string.cancel, null)
+                .setNegativeButton(R.string.skip, null)
                 .show();
     }
 

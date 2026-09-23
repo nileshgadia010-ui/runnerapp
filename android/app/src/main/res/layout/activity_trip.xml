@@ -279,6 +279,20 @@
         </LinearLayout>
     </ScrollView>
 
+    <!-- Which of the three steps he is on, so the flow is obvious without reading the button. -->
+    <TextView
+        android:id="@+id/tStep"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginLeft="16dp"
+        android:layout_marginRight="16dp"
+        android:layout_marginTop="10dp"
+        android:gravity="center"
+        android:textColor="@color/muted"
+        android:textSize="12sp"
+        android:letterSpacing="0.08"
+        android:textStyle="bold" />
+
     <Button
         android:id="@+id/tAction"
         android:layout_width="match_parent"

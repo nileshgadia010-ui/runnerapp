@@ -19,14 +19,25 @@ const STAGE_FIELD = {
   COMPLETED: 'completedAt'
 };
 
-// The runner app can only move forward, one step at a time (skipping ahead is blocked).
+/*
+ * Forward-only, but a runner may skip ahead.
+ *
+ * The full machine has seven stops, and pressing a button at every one of them is more work
+ * than the job deserves - a man on a bike in traffic should be telling us three things: he
+ * arrived, he has the thing and is leaving, he handed it over. The two "on the way" stages
+ * are inferred from the stages either side of them (see applyStage), so the timeline the TAT
+ * report reads is still complete even though nobody pressed a button for them.
+ *
+ * The desk can still set any of these explicitly, which is why the intermediate stages
+ * remain valid targets rather than being deleted.
+ */
 const NEXT = {
   ASSIGNED: ['ACCEPTED', 'REJECTED', 'CANCELLED'],
   ACCEPTED: ['EN_ROUTE_PICKUP', 'AT_PICKUP', 'CANCELLED'],
   EN_ROUTE_PICKUP: ['AT_PICKUP', 'CANCELLED'],
   AT_PICKUP: ['PICKED', 'CANCELLED'],
-  PICKED: ['EN_ROUTE_DROP', 'AT_DROP', 'CANCELLED'],
-  EN_ROUTE_DROP: ['AT_DROP', 'CANCELLED'],
+  PICKED: ['EN_ROUTE_DROP', 'AT_DROP', 'COMPLETED', 'CANCELLED'],
+  EN_ROUTE_DROP: ['AT_DROP', 'COMPLETED', 'CANCELLED'],
   AT_DROP: ['COMPLETED', 'CANCELLED'],
   COMPLETED: [],
   REJECTED: [],
@@ -187,9 +198,25 @@ async function applyStage(trip, stage, opts = {}) {
   const field = STAGE_FIELD[stage];
   if (field && !trip[field]) trip[field] = now;
 
-  // Catch up any stage the runner jumped over so the TAT maths never has a hole.
+  /*
+   * Fill in whatever the runner skipped, so the TAT maths never has a hole.
+   *
+   * The report measures five spans - accept, ride to pickup, wait at pickup, ride to drop,
+   * wait at drop - and each needs a timestamp at both ends. When a stage is skipped its
+   * timestamp is taken from the stage it was between, which is the honest reading: if he
+   * says he reached the hospital and never said when he set off, he set off when he
+   * accepted. The spans stay truthful; only the button presses disappear.
+   */
   if (stage === 'AT_PICKUP' && !trip.startedAt) trip.startedAt = trip.acceptedAt || now;
+  if (stage === 'PICKED' && !trip.atPickupAt) trip.atPickupAt = now;
   if (stage === 'AT_DROP' && !trip.dropStartedAt) trip.dropStartedAt = trip.pickedAt || now;
+
+  // Handing over in one tap: he was on the way from the moment he picked up, and he arrived
+  // at the moment he handed over. Dwell at the drop reads as zero, which is what happened.
+  if (stage === 'COMPLETED') {
+    if (!trip.dropStartedAt) trip.dropStartedAt = trip.pickedAt || now;
+    if (!trip.atDropAt) trip.atDropAt = now;
+  }
 
   trip.status = stage;
   if (stage === 'REJECTED') { trip.rejectedAt = now; trip.rejectReason = opts.note || ''; }
