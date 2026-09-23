@@ -277,6 +277,13 @@ public class HomeActivity extends BaseActivity {
             }
 
             jobAnchorAt = trip.optString("assignedAt", null);
+
+            // Tell him what is stacked behind this one, so finishing is not a surprise.
+            int queued = data.optInt("queued", 0);
+            if (queued > 0) {
+                jobStage.setText(trip.optString("statusLabel", "").toUpperCase() + "  •  " +
+                        getString(queued == 1 ? R.string.more_waiting : R.string.more_waiting_many, queued));
+            }
         } else {
             activeTripId = null;
             jobAnchorAt = null;

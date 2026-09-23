@@ -29,6 +29,19 @@ router.get('/live', async (req, res) => {
     .lean();
   const byId = Object.fromEntries(trips.map(t => [String(t._id), t]));
 
+  // Every unfinished job each runner is holding, so the board can show "on a job, 2 waiting"
+  // and the desk knows who actually has room for the next one.
+  const openTrips = await Trip.find({
+    runner: { $in: runners.map(r => r._id) },
+    status: { $in: ['ASSIGNED', 'ACCEPTED', 'EN_ROUTE_PICKUP', 'AT_PICKUP', 'PICKED', 'EN_ROUTE_DROP', 'AT_DROP'] }
+  }).select('runner tripNo status type queueOrder assignedAt').sort({ queueOrder: 1, assignedAt: 1 }).lean();
+
+  const queueByRunner = {};
+  openTrips.forEach(t => {
+    const k = String(t.runner);
+    (queueByRunner[k] = queueByRunner[k] || []).push(t);
+  });
+
   // Today's job count per runner, so the side panel can show workload at a glance.
   const today = ISTDate();
   const att = await Attendance.find({ runner: { $in: runners.map(r => r._id) }, date: today })
@@ -53,6 +66,13 @@ router.get('/live', async (req, res) => {
     flagged: !!(r.integrity && (r.integrity.vpn || r.integrity.mockLocation || r.integrity.rooted)),
 
     tripsToday: doneById[String(r._id)] || 0,
+
+    // Jobs in hand right now, and how many of those are still waiting their turn.
+    jobsInHand: (queueByRunner[String(r._id)] || []).length,
+    waiting: Math.max(0, (queueByRunner[String(r._id)] || []).length - 1),
+    queue: (queueByRunner[String(r._id)] || []).map(t => ({
+      id: String(t._id), tripNo: t.tripNo, status: t.status, type: t.type
+    })),
 
     // How far he still has to ride to the point he is heading for right now. The desk asks
     // this constantly ("kitna door hai?"), so the board answers it without anyone calling.

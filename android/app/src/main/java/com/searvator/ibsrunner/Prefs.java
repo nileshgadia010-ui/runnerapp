@@ -34,9 +34,17 @@ public class Prefs {
     /* ---- intervals ---- */
 
     public int pollSeconds() { return sp.getInt("poll", 5); }
-    public int pingSeconds() { return sp.getInt("ping", 20); }
-    public void setIntervals(int poll, int ping) {
-        sp.edit().putInt("poll", Math.max(3, poll)).putInt("ping", Math.max(10, ping)).apply();
+
+    /** How often to upload a position while carrying a job. */
+    public int pingSeconds() { return sp.getInt("ping", 8); }
+
+    /** The slower rate used when the runner is punched in but has nothing to do. */
+    public int idlePingSeconds() { return sp.getInt("pingIdle", 30); }
+
+    public void setIntervals(int poll, int ping, int idlePing) {
+        sp.edit().putInt("poll", Math.max(3, poll))
+                .putInt("ping", Math.max(5, ping))
+                .putInt("pingIdle", Math.max(10, idlePing)).apply();
     }
 
     /* ---- duty state ---- */

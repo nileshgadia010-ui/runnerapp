@@ -11,8 +11,11 @@ router.use(auth);
 const POP = [
   { path: 'hospital', select: 'name area city lat lng phone' },
   { path: 'bloodCenter', select: 'name area city lat lng phone' },
+  { path: 'fromLocation', select: 'name area city lat lng phone' },
+  { path: 'toLocation', select: 'name area city lat lng phone' },
   { path: 'sampleTrip', populate: { path: 'runner', select: 'name phone' } },
-  { path: 'deliveryTrip', populate: { path: 'runner', select: 'name phone' } }
+  { path: 'deliveryTrip', populate: { path: 'runner', select: 'name phone' } },
+  { path: 'jobTrip', populate: { path: 'runner', select: 'name phone' } }
 ];
 
 router.get('/', async (req, res) => {
@@ -46,15 +49,36 @@ router.get('/:id', async (req, res) => {
   res.json({ ...c, trips, tat: caseTat(c, c.sampleTrip, c.deliveryTrip, new Date()) });
 });
 
+// What each job type must have before it can be created. A blood case is the only one that
+// needs a patient; the other three are errands, and insisting on a patient name there would
+// only teach the desk to type rubbish into the box.
+const REQUIRED = {
+  BLOOD: b => (!b.patientName ? 'Patient name is required for a blood case'
+            : !b.hospital ? 'Choose the hospital'
+            : !b.bloodCenter ? 'Choose the blood centre' : null),
+  COLLECTION_SAMPLE: b => (!b.fromLocation ? 'Choose where the sample is collected from'
+            : !b.toLocation ? 'Choose where it has to be taken' : null),
+  PAYMENT_COLLECT: b => (!b.fromLocation ? 'Choose where the payment is collected from'
+            : !b.toLocation ? 'Choose where it has to be brought'
+            : !Number(b.amount) ? 'Enter the amount to collect' : null),
+  PACKAGE_DELIVER: b => (!b.fromLocation ? 'Choose where the package is picked up'
+            : !b.toLocation ? 'Choose where it has to be delivered'
+            : !b.packageDetails ? 'Write what is in the package' : null)
+};
+
 router.post('/', can('createCases'), async (req, res) => {
   const b = req.body || {};
-  if (!b.patientName || !b.hospital || !b.bloodCenter) {
-    return res.status(400).json({ error: 'Patient name, hospital and blood centre are required' });
-  }
+  const jobType = REQUIRED[b.jobType] ? b.jobType : 'BLOOD';
+
+  const problem = REQUIRED[jobType](b);
+  if (problem) return res.status(400).json({ error: problem });
+
   const kase = await Case.create({
     ...b,
+    jobType,
     caseNo: await nextNumber('IBS'),
     unitsRequested: Number(b.unitsRequested || 1),
+    amount: Number(b.amount || 0),
     createdBy: req.user._id
   });
   realtime.emit('case:new', { caseId: String(kase._id) });

@@ -72,6 +72,7 @@ public class DutyService extends Service {
     private long lastIntegrityAt = 0;
     private String ringingTripId = null;
     private boolean alarmPlaying = false;
+    private boolean onJob = false;
     private boolean running = false;
 
     private final LocationListener listener = new LocationListener() {
@@ -158,6 +159,22 @@ public class DutyService extends Service {
 
     /* ---------------- the loop ---------------- */
 
+    /**
+     * The location listener can go quiet - a phone asleep in a pocket, a provider that
+     * stopped reporting after a doze window. Asking for the last known fix each cycle means
+     * the desk keeps getting a position instead of the pin freezing where it last moved.
+     */
+    private void refreshFix() {
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) return;
+        try {
+            Location gps = lm.getLastKnownLocation(LocationManager.GPS_PROVIDER);
+            Location net = lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
+            Location best = gps == null ? net : (net == null ? gps : (gps.getTime() > net.getTime() ? gps : net));
+            if (best == null) return;
+            if (lastFix == null || best.getTime() > lastFix.getTime()) lastFix = best;
+        } catch (Exception ignored) { }
+    }
+
     private final Runnable tick = new Runnable() {
         @Override
         public void run() {
@@ -172,7 +189,13 @@ public class DutyService extends Service {
         long now = System.currentTimeMillis();
 
         // 1. Location. Always queued first, then flushed - so a dead network loses nothing.
-        if (lastFix != null && now - lastPingAt >= prefs.pingSeconds() * 1000L) {
+        //
+        // Two rates on purpose. While he is carrying a job the desk is watching the pin move,
+        // so positions go up every few seconds. Idle on duty, nobody is watching a stationary
+        // pin, so we back off and save his battery for the ride that matters.
+        refreshFix();
+        int rate = onJob ? prefs.pingSeconds() : prefs.idlePingSeconds();
+        if (lastFix != null && now - lastPingAt >= rate * 1000L) {
             lastPingAt = now;
             queuePing(lastFix);
         }
@@ -193,10 +216,12 @@ public class DutyService extends Service {
         prefs.setLastPoll(poll.toString());
 
         JSONObject cfg = poll.optJSONObject("config");
-        if (cfg != null) prefs.setIntervals(cfg.optInt("pollInterval", 5), cfg.optInt("pingInterval", 20));
+        if (cfg != null) prefs.setIntervals(cfg.optInt("pollInterval", 5),
+                cfg.optInt("pingInterval", 8), cfg.optInt("idlePingInterval", 30));
 
         JSONObject trip = poll.optJSONObject("trip");
         boolean ring = poll.optBoolean("ring", false);
+        onJob = trip != null;
 
         Intent b = new Intent(BROADCAST_UPDATE);
         b.setPackage(getPackageName());

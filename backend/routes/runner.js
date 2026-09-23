@@ -10,7 +10,7 @@ const SLA = require('../config/sla');
 const { auth, allow } = require('../middleware/auth');
 const { tripTat } = require('../services/tat');
 const { roadKm, etaMinutes, kmFromPings } = require('../services/geo');
-const { applyStage, labelFor, ISTDate } = require('../services/dispatch');
+const { applyStage, labelFor, jobTitle, queueFor, currentOf, ISTDate } = require('../services/dispatch');
 const realtime = require('../services/realtime');
 
 // Photos are held in memory just long enough to be written into MongoDB. Nothing touches
@@ -52,7 +52,7 @@ router.use(auth, allow('runner', 'admin'));
  * ------------------------------------------------------------------ */
 
 const POP = [
-  { path: 'case', select: 'caseNo patientName patientAge patientGender bloodGroup component unitsRequested priority wardBed attendantName attendantPhone remarks' },
+  { path: 'case', select: 'caseNo jobType patientName reference patientAge patientGender bloodGroup component unitsRequested priority wardBed attendantName attendantPhone remarks amount amountAgainst packageDetails' },
   { path: 'pickupLocation', select: 'name address area phone lat lng contactPerson geofence' },
   { path: 'dropLocation', select: 'name address area phone lat lng contactPerson geofence' }
 ];
@@ -71,8 +71,20 @@ function place(p) {
   };
 }
 
+// The runner needs the patient's name only when he is physically handing units to that
+// patient's bedside - that is the check that stops the wrong bag reaching the wrong person.
+// For a sample pickup or any of the errand jobs, the hospital, ward and reference are enough,
+// so the name simply never leaves the office. Less patient data on a phone that lives in a
+// pocket on a bike is the right default.
+function runnerFacingName(t) {
+  const c = t.case || {};
+  if (t.type === 'BLOOD_DELIVERY') return c.patientName || c.reference || '';
+  return c.reference || c.caseNo || '';
+}
+
 function tripCard(t, from) {
   const sample = t.type === 'SAMPLE_PICKUP';
+  const blood = sample || t.type === 'BLOOD_DELIVERY';
   const target = currentTarget(t);
   let km = null, eta = null;
   if (target && from && from.lat && from.lng) {
@@ -85,14 +97,25 @@ function tripCard(t, from) {
     type: t.type,
     status: t.status,
     statusLabel: labelFor(t.type, t.status),
-    headline: sample ? 'Collect sample' : 'Deliver blood',
+    headline: jobTitle(t.type),
+    jobType: t.case ? t.case.jobType : 'BLOOD',
     caseNo: t.case && t.case.caseNo,
-    patientName: t.case && t.case.patientName,
-    patientAge: t.case && t.case.patientAge,
-    patientGender: t.case && t.case.patientGender,
-    bloodGroup: t.case && t.case.bloodGroup,
-    component: t.case && t.case.component,
-    units: t.case && t.case.unitsRequested,
+
+    // "Who or what is this job for", already filtered for what the runner should see.
+    patientName: runnerFacingName(t),
+    reference: t.case && t.case.reference,
+
+    // Only present on the job types that use them, so the phone can hide the rest.
+    amount: t.case && t.case.amount ? t.case.amount : null,
+    amountAgainst: t.case && t.case.amountAgainst,
+    packageDetails: t.case && t.case.packageDetails,
+    amountCollected: t.amountCollected,
+
+    patientAge: blood && t.case ? t.case.patientAge : null,
+    patientGender: blood && t.case ? t.case.patientGender : null,
+    bloodGroup: blood && t.case ? t.case.bloodGroup : null,
+    component: blood && t.case ? t.case.component : null,
+    units: blood && t.case ? t.case.unitsRequested : null,
     priority: t.case && t.case.priority,
     wardBed: t.case && t.case.wardBed,
     attendantName: t.case && t.case.attendantName,
@@ -148,8 +171,14 @@ router.get('/poll', async (req, res) => {
   runner.lastSeenAt = new Date();
   await runner.save();
 
-  const trip = await Trip.findOne({ runner: runner._id, status: { $nin: ['COMPLETED', 'REJECTED', 'CANCELLED'] } })
-    .populate(POP).lean();
+  // A runner can hold more than one job. Show him the one he is actually on - anything he
+  // has started beats anything merely assigned - and tell him how many are stacked behind it
+  // so the next job is never a surprise.
+  const queue = await queueFor(runner._id);
+  const head = currentOf(queue);
+  const trip = head
+    ? await Trip.findById(head._id).populate(POP).lean()
+    : null;
 
   const date = ISTDate();
   const att = await Attendance.findOne({ runner: runner._id, date }).lean();
@@ -171,7 +200,10 @@ router.get('/poll', async (req, res) => {
 
     ring: !!(trip && trip.status === 'ASSIGNED' && trip.alertPending),
     trip: trip ? tripCard(trip, runner.lastLocation) : null,
-    config: { pingInterval: SLA.pingInterval, pollInterval: SLA.pollInterval }
+
+    // Jobs assigned to him that are not the one on screen.
+    queued: Math.max(0, queue.length - (trip ? 1 : 0)),
+    config: { pingInterval: SLA.pingInterval, idlePingInterval: SLA.idlePingInterval, pollInterval: SLA.pollInterval }
   });
 });
 
@@ -190,7 +222,8 @@ router.post('/alert-seen', async (req, res) => {
 });
 
 router.get('/trip/active', async (req, res) => {
-  const trip = await Trip.findOne({ runner: req.user._id, status: { $nin: ['COMPLETED', 'REJECTED', 'CANCELLED'] } }).populate(POP).lean();
+  const head = currentOf(await queueFor(req.user._id));
+  const trip = head ? await Trip.findById(head._id).populate(POP).lean() : null;
   res.json(trip ? tripCard(trip, req.user.lastLocation) : null);
 });
 
@@ -325,6 +358,7 @@ async function doStage(user, tripId, body) {
   await applyStage(trip, body.stage, {
     lat: body.lat, lng: body.lng, note: body.note,
     barcode: body.barcode, units: body.units,
+    amount: body.amount, paymentMode: body.paymentMode, paymentRef: body.paymentRef,
     proofPhoto: body.proofPhoto,
     at: safeTime(body.at), by: 'runner'
   });
@@ -347,6 +381,7 @@ router.post('/trip/:id/stage', upload.single('photo'), async (req, res, next) =>
       stage: req.body.stage,
       lat: req.body.lat, lng: req.body.lng, note: req.body.note,
       barcode: req.body.barcode, units: req.body.units,
+      amount: req.body.amount, paymentMode: req.body.paymentMode, paymentRef: req.body.paymentRef,
       at: req.body.at,
       proofPhoto
     });

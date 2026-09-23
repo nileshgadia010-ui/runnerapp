@@ -109,30 +109,80 @@ const Live = (function () {
       if (!r.lastLocation || !r.lastLocation.lat) return;
       seen[r.id] = true;
       const pos = [r.lastLocation.lat, r.lastLocation.lng];
-      const icon = L.divIcon({
-        className: '',
-        html: '<div class="pin-wrap">' + pinHalo(r) +
-              '<div class="pin ' + pinClass(r) + '">' + pinGlyph(r) + '</div></div>',
-        iconSize: [44, 44], iconAnchor: [22, 40]
-      });
+      const html = '<div class="pin-wrap">' + pinHalo(r) +
+                   '<div class="pin ' + pinClass(r) + '">' + pinGlyph(r) + '</div></div>';
+      const icon = L.divIcon({ className: '', html, iconSize: [44, 44], iconAnchor: [22, 40] });
       const far = r.targetKm !== null && r.targetKm !== undefined
         ? '<br>' + r.targetKm + ' km from ' + F.esc(r.targetName || 'the stop') + ' (~' + r.targetEtaMin + ' min)'
         : '';
       const tip = '<b>' + F.esc(r.name) + '</b><br>' +
-        (r.trip ? 'Trip ' + r.trip.tripNo : F.stageLabel('', r.dutyState)) + far +
+        (r.trip ? 'Trip ' + r.trip.tripNo : F.stageLabel('', r.dutyState)) +
+        (r.waiting ? ' (+' + r.waiting + ' waiting)' : '') + far +
         '<br>' + r.tripsToday + ' job' + (r.tripsToday === 1 ? '' : 's') + ' today' +
         '<br>Last ping ' + F.ago(r.lastLocation.at);
 
-      if (markers[r.id]) {
-        markers[r.id].setLatLng(pos).setIcon(icon).setTooltipContent(tip);
+      const m = markers[r.id];
+      if (m) {
+        // Only swap the icon when it has genuinely changed.
+        //
+        // This is what was stopping the pins from moving. setIcon() throws away the marker's
+        // DOM element and builds a new one, so the CSS transition that slides a pin from its
+        // old position to its new one never had an element to run on - every update looked
+        // like a teleport, and on a slow refresh like nothing at all. Leaflet moves a marker
+        // with a CSS transform, so leaving the element alone lets it glide.
+        if (m._iconHtml !== html) { m.setIcon(icon); m._iconHtml = html; }
+        m.setLatLng(pos).setTooltipContent(tip);
+        if (m._icon) m._icon.classList.add('pin-moving');
       } else {
         markers[r.id] = L.marker(pos, { icon }).bindTooltip(tip).addTo(runnerLayer);
+        markers[r.id]._iconHtml = html;
         markers[r.id].on('click', () => { if (r.trip) selectTrip(r.trip._id); else map.setView(pos, 15); });
+        // The transition is added a beat after the pin is placed, so a new marker appears
+        // where it belongs instead of flying in from the corner of the map.
+        const el = markers[r.id]._icon;
+        if (el) setTimeout(() => el.classList.add('pin-moving'), 60);
       }
     });
     Object.keys(markers).forEach(id => {
       if (!seen[id]) { runnerLayer.removeLayer(markers[id]); delete markers[id]; }
     });
+  }
+
+  /**
+   * Moves one runner the instant the server hears from his phone.
+   *
+   * The board used to wait for its ten-second poll before a pin could move, so a rider
+   * crossing town appeared to sit still and then jump. The server already pushes every
+   * location it receives; this takes that push straight to the marker, which is what makes
+   * the map read as live. The periodic refresh still runs underneath for everything else -
+   * duty state, job counts, the trail.
+   */
+  function moveRunner(d) {
+    if (!d || !d.runnerId || !d.lat) return;
+
+    const r = runners.find(x => String(x.id) === String(d.runnerId));
+    if (r) {
+      r.lastLocation = Object.assign({}, r.lastLocation, {
+        lat: d.lat, lng: d.lng, accuracy: d.accuracy, speed: d.speed, at: d.at || new Date().toISOString()
+      });
+      r.lastSeenAt = d.at || new Date().toISOString();
+      r.signalLost = false;
+    }
+
+    const m = markers[d.runnerId];
+    if (m) {
+      m.setLatLng([d.lat, d.lng]);
+      if (m._icon) m._icon.classList.add('pin-moving');
+    } else {
+      // A pin we have not drawn yet - let the next refresh create it properly.
+      paintMarkers();
+    }
+
+    // When a trip is open on screen, redraw its trail so the line keeps up with the pin.
+    // Cheap enough at ping rate, and it keeps the route honest rather than trailing behind.
+    if (followTripId && r && r.trip && String(r.trip._id) === String(followTripId)) {
+      drawRoute(followTripId);
+    }
   }
 
   async function drawRoute(tripId) {
@@ -180,7 +230,7 @@ const Live = (function () {
       '<div class="job__top"><span class="job__name">' + F.esc(t.case ? t.case.patientName : 'Case') + '</span>' +
       '<span class="job__no mono">' + F.esc(t.tripNo) + '</span>' +
       (t.case ? UI.priorityChip(t.case.priority) : '') + '</div>' +
-      '<div class="job__line">' + (t.type === 'SAMPLE_PICKUP' ? 'Sample pickup' : 'Blood delivery') +
+      '<div class="job__line">' + F.jobTitle(t.type) +
       ' &middot; ' + F.esc(heading ? heading.name : '') + '</div>' +
       '<div class="job__line">' + F.esc(t.runner ? t.runner.name : 'Unassigned') +
       (t.runner && t.runner.phone ? ' &middot; ' + F.esc(t.runner.phone) : '') + '</div>' +
@@ -198,8 +248,11 @@ const Live = (function () {
     // point - "is he online right now" was impossible to tell from a static grey dot.
     const alive = !r.signalLost && r.dutyState !== 'OFF_DUTY' ? ' dot--live' : '';
 
+    // A runner can be holding more than one job now, so say so - "on a job" alone would hide
+    // the fact that two more are already stacked behind it.
+    const waiting = r.waiting ? ' &middot; ' + r.waiting + ' waiting' : '';
     const line = r.trip
-      ? 'Trip ' + r.trip.tripNo + ' &middot; ' + F.stageLabel(r.trip.type, r.trip.status)
+      ? 'Trip ' + r.trip.tripNo + ' &middot; ' + F.stageLabel(r.trip.type, r.trip.status) + waiting
       : (r.dutyState === 'AVAILABLE' ? 'Free, waiting for a job' : r.dutyState === 'BREAK' ? 'On break' : 'Not punched in');
 
     // Distance still to ride, when he is on a job and has pinged at least once.
@@ -286,7 +339,7 @@ const Live = (function () {
     const body =
       '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">' +
       '<span class="chip chip--ink mono">' + F.esc(t.tripNo) + '</span>' +
-      '<span class="chip chip--blue">' + (t.type === 'SAMPLE_PICKUP' ? 'Sample pickup' : 'Blood delivery') + '</span>' +
+      '<span class="chip chip--blue">' + F.jobTitle(t.type) + '</span>' +
       (t.case ? UI.priorityChip(t.case.priority) : '') +
       '<span class="chip">' + F.stageLabel(t.type, t.status) + '</span></div>' +
 
@@ -361,5 +414,5 @@ const Live = (function () {
     if (replay) replay.addEventListener('click', () => { UI.closeDrawer(); Main.go('live'); drawRoute(t._id); });
   }
 
-  return { boot, refresh, openTrip, selectTrip, runnersCache: () => runners };
+  return { boot, refresh, moveRunner, openTrip, selectTrip, runnersCache: () => runners };
 })();

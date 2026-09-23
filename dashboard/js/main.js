@@ -130,7 +130,12 @@ const Main = (function () {
     // Push updates: a runner moving, accepting or finishing repaints the board at once.
     if (window.io) {
       const socket = io();
-      ['runner:location', 'runner:status', 'trip:update', 'case:update', 'case:new'].forEach(ev =>
+      // Location is handled on its own because it arrives constantly and only needs to move
+      // one pin. Routing it through the full-board refresh made every ping re-fetch and
+      // repaint everything, which is why the map lagged instead of tracking.
+      socket.on('runner:location', d => Live.moveRunner(d));
+
+      ['runner:status', 'trip:update', 'case:update', 'case:new'].forEach(ev =>
         socket.on(ev, () => {
           Live.refresh();
           strip();

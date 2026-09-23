@@ -4,6 +4,7 @@ const Cases = (function () {
   let rows = [];
   let hospitals = [];
   let centres = [];
+  let allPlaces = [];
   let booted = false;
 
   async function boot() {
@@ -20,6 +21,7 @@ const Cases = (function () {
 
   async function loadPlaces() {
     const all = await API.get('/api/locations');
+    allPlaces = all;
     hospitals = all.filter(p => p.type !== 'BLOOD_CENTER');
     centres = all.filter(p => p.type === 'BLOOD_CENTER');
   }
@@ -95,23 +97,46 @@ const Cases = (function () {
   async function pickRunner(onPick) {
     const live = await API.get('/api/users/live');
     const order = { AVAILABLE: 0, BREAK: 1, ON_TRIP: 2, OFF_DUTY: 3 };
-    const list = live.slice().sort((a, b) => order[a.dutyState] - order[b.dutyState]);
+    const list = live.slice().sort((a, b) => (order[a.dutyState] - order[b.dutyState]) || (a.jobsInHand - b.jobsInHand));
 
-    const body = list.length
+    // A runner already carrying a job can still be given the next one - it lines up behind
+    // what he is doing and rings when its turn comes. That is how a real shift works: the
+    // desk hands out the next errand while he is still on the road. Only a runner who is off
+    // duty, or already holding the maximum, cannot take another.
+    const MAX = 3;
+    const canTake = r => r.dutyState !== 'OFF_DUTY' && (r.jobsInHand || 0) < MAX;
+
+    const body = (list.length
       ? list.map(r => {
-          const free = r.dutyState === 'AVAILABLE';
-          return '<div class="runner-row" style="margin-bottom:8px;' + (free ? '' : 'opacity:.55;') + '" ' +
-            (free ? 'data-pick="' + r.id + '"' : '') + '>' +
+          const ok = canTake(r);
+          const held = r.jobsInHand || 0;
+          const waiting = r.waiting || 0;
+
+          const line = !ok && r.dutyState === 'OFF_DUTY' ? 'Not punched in'
+            : !ok ? 'Already holding ' + held + ' jobs'
+            : held === 0 ? 'Free' + (r.lastSeenAt ? ' &middot; last ping ' + F.ago(r.lastSeenAt) : '')
+            : r.dutyState === 'BREAK' ? 'On break'
+            : 'On ' + (r.trip ? r.trip.tripNo : 'a job') + (waiting ? ' &middot; ' + waiting + ' already waiting' : '');
+
+          const badge = held
+            ? '<span class="load" title="Jobs in hand">' + held + '</span>'
+            : '';
+
+          return '<div class="runner-row" style="margin-bottom:8px;' + (ok ? '' : 'opacity:.5;') + '" ' +
+            (ok ? 'data-pick="' + r.id + '"' : '') + '>' +
             '<div class="runner-row__av">' + F.initials(r.name) + '</div>' +
-            '<div class="runner-row__meta"><b>' + F.esc(r.name) + '</b><span>' +
-            (r.trip ? 'Busy on ' + r.trip.tripNo : r.dutyState === 'AVAILABLE' ? 'Free' + (r.lastSeenAt ? ' &middot; last ping ' + F.ago(r.lastSeenAt) : '') : r.dutyState === 'BREAK' ? 'On break' : 'Not punched in') +
-            '</span></div>' + UI.dutyChip(r.dutyState) + '</div>';
+            '<div class="runner-row__meta"><b>' + F.esc(r.name) + '</b><span>' + line + '</span></div>' +
+            '<div class="runner-row__right">' + badge + UI.dutyChip(r.dutyState) + '</div></div>';
         }).join('')
-      : UI.empty('No runners added yet');
+      : UI.empty('No runners added yet')) +
+      '<p style="color:var(--muted);font-size:12px;margin-top:14px">' +
+      'A runner who is already out can still be given the next job - it waits behind the one ' +
+      'he is on and his phone rings when he finishes.</p>';
 
     UI.openDrawer('Pick a runner', body, '');
     document.querySelectorAll('[data-pick]').forEach(el => el.addEventListener('click', () => onPick(el.dataset.pick)));
   }
+
 
   function crossmatchForm(id) {
     const body =
@@ -140,9 +165,28 @@ const Cases = (function () {
     });
   }
 
+  // The four reasons a runner gets sent out. Blood is the two-leg case with a crossmatch in
+  // the middle; the rest are single errands. IBS runners are not phlebotomists - the hospital
+  // staff draw the sample and hand it over - so most jobs need a place and a reason, not a
+  // patient. The form asks only for what the chosen type actually needs.
+  const JOB_TYPES = [
+    { key: 'BLOOD',             label: 'Blood case',      note: 'Sample out, crossmatch, units back' },
+    { key: 'COLLECTION_SAMPLE', label: 'Collect sample',  note: 'One pickup, no crossmatch' },
+    { key: 'PAYMENT_COLLECT',   label: 'Collect payment', note: 'Bring money back' },
+    { key: 'PACKAGE_DELIVER',   label: 'Deliver package', note: 'Carry a parcel across' }
+  ];
+
   function openForm() {
-    const opts = list => list.map(p => '<option value="' + p._id + '">' + F.esc(p.name) + (p.area ? ' - ' + F.esc(p.area) : '') + '</option>').join('');
-    const body =
+    const opts = (list, placeholder) =>
+      (placeholder ? '<option value="">-- ' + placeholder + ' --</option>' : '') +
+      list.map(p => '<option value="' + p._id + '">' + F.esc(p.name) + (p.area ? ' - ' + F.esc(p.area) : '') + '</option>').join('');
+
+    const typeBar = '<div class="jobtypes" id="cTypeBar">' + JOB_TYPES.map((t, i) =>
+      '<button type="button" class="jobtype' + (i === 0 ? ' is-on' : '') + '" data-type="' + t.key + '">' +
+      '<b>' + t.label + '</b><span>' + t.note + '</span></button>').join('') + '</div>';
+
+    const bloodBlock =
+      '<div data-block="BLOOD">' +
       '<div class="grid-2">' +
       '<div class="field"><label>Patient name</label><input id="cName" autofocus></div>' +
       '<div class="field"><label>Age</label><input id="cAge" placeholder="e.g. 34 Y"></div></div>' +
@@ -152,56 +196,114 @@ const Cases = (function () {
       ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map(g => '<option>' + g + '</option>').join('') + '</select></div>' +
       '<div class="field"><label>Component</label><select id="cComp">' +
       ['PCV', 'FFP', 'PC', 'WB', 'SDP', 'RDP', 'CRYO', 'PRBC'].map(g => '<option>' + g + '</option>').join('') + '</select></div></div>' +
-      '<div class="grid-2">' +
       '<div class="field"><label>Units needed</label><input id="cUnits" type="number" min="1" value="1"></div>' +
-      '<div class="field"><label>Priority</label><select id="cPriority"><option value="ROUTINE">Routine</option><option value="URGENT">Urgent</option><option value="EMERGENCY">Emergency</option></select></div></div>' +
       '<div class="field"><label>Hospital (where the patient is)</label><select id="cHospital">' + opts(hospitals) + '</select></div>' +
       '<div class="field"><label>Blood centre (where the sample goes)</label><select id="cCentre">' + opts(centres) + '</select></div>' +
       '<div class="grid-2">' +
       '<div class="field"><label>Ward / bed</label><input id="cWard"></div>' +
       '<div class="field"><label>Treating doctor</label><input id="cDoctor"></div></div>' +
+      '</div>';
+
+    const errandBlock =
+      '<div data-block="ERRAND" hidden>' +
+      '<div class="field"><label>Reference for the runner</label>' +
+      '<input id="cRef" placeholder="Slip number, invoice number, parcel number">' +
+      '<small style="color:var(--muted);font-size:11px">This is what the runner sees on his phone instead of a patient name.</small></div>' +
+      '<div class="field"><label>Pick up from</label><select id="cFrom">' + opts(allPlaces, 'choose a place') + '</select></div>' +
+      '<div class="field"><label>Take it to</label><select id="cTo">' + opts(allPlaces, 'choose a place') + '</select></div>' +
+      '<div data-sub="PAYMENT_COLLECT" hidden>' +
       '<div class="grid-2">' +
+      '<div class="field"><label>Amount to collect</label><input id="cAmount" type="number" min="0" placeholder="0"></div>' +
+      '<div class="field"><label>Against</label><input id="cAgainst" placeholder="Invoice, bill number"></div></div></div>' +
+      '<div data-sub="PACKAGE_DELIVER" hidden>' +
+      '<div class="field"><label>What is in the package</label><input id="cPackage" placeholder="Reports, kit, consumables"></div></div>' +
+      '<div class="field"><label>Who to meet there</label><input id="cAttName2" placeholder="Name at the counter"></div>' +
+      '</div>';
+
+    const commonBlock =
+      '<div class="field"><label>Priority</label><select id="cPriority"><option value="ROUTINE">Routine</option><option value="URGENT">Urgent</option><option value="EMERGENCY">Emergency</option></select></div>' +
+      '<div class="grid-2" data-block="BLOOD">' +
       '<div class="field"><label>Attendant name</label><input id="cAttName"></div>' +
       '<div class="field"><label>Attendant phone</label><input id="cAttPhone"></div></div>' +
+      '<div class="field"><label>Phone to call there</label><input id="cPhone2" placeholder="Optional" hidden></div>' +
       '<div class="field"><label>Remarks for the runner</label><textarea id="cRemarks" placeholder="Gate number, floor, who to meet"></textarea></div>';
 
-    UI.openDrawer('New case', body,
+    UI.openDrawer('New job', typeBar + bloodBlock + errandBlock + commonBlock,
       '<button class="btn btn--ghost" onclick="UI.closeDrawer()">Cancel</button>' +
-      '<button class="btn btn--red" id="caseSave">Save case</button>' +
+      '<button class="btn btn--red" id="caseSave">Save</button>' +
       '<button class="btn" id="caseSaveAssign">Save and send runner</button>');
 
-    const collect = () => ({
-      patientName: document.getElementById('cName').value.trim(),
-      patientAge: document.getElementById('cAge').value.trim(),
-      patientGender: document.getElementById('cGender').value,
-      bloodGroup: document.getElementById('cGroup').value,
-      component: document.getElementById('cComp').value,
-      unitsRequested: document.getElementById('cUnits').value,
-      priority: document.getElementById('cPriority').value,
-      hospital: document.getElementById('cHospital').value,
-      bloodCenter: document.getElementById('cCentre').value,
-      wardBed: document.getElementById('cWard').value.trim(),
-      doctorName: document.getElementById('cDoctor').value.trim(),
-      attendantName: document.getElementById('cAttName').value.trim(),
-      attendantPhone: document.getElementById('cAttPhone').value.trim(),
-      remarks: document.getElementById('cRemarks').value.trim()
+    let jobType = 'BLOOD';
+
+    function showFor(type) {
+      jobType = type;
+      const blood = type === 'BLOOD';
+      document.querySelectorAll('[data-block="BLOOD"]').forEach(el => { el.hidden = !blood; });
+      document.querySelectorAll('[data-block="ERRAND"]').forEach(el => { el.hidden = blood; });
+      document.querySelectorAll('[data-sub]').forEach(el => { el.hidden = el.dataset.sub !== type; });
+      document.getElementById('cPhone2').parentNode.hidden = blood;
+      document.querySelectorAll('.jobtype').forEach(b => b.classList.toggle('is-on', b.dataset.type === type));
+    }
+
+    document.getElementById('cTypeBar').addEventListener('click', e => {
+      const b = e.target.closest('.jobtype');
+      if (b) showFor(b.dataset.type);
     });
+
+    const val = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
+
+    const collect = () => {
+      const base = {
+        jobType,
+        priority: val('cPriority'),
+        remarks: val('cRemarks')
+      };
+      if (jobType === 'BLOOD') {
+        return Object.assign(base, {
+          patientName: val('cName'),
+          patientAge: val('cAge'),
+          patientGender: val('cGender'),
+          bloodGroup: val('cGroup'),
+          component: val('cComp'),
+          unitsRequested: val('cUnits'),
+          hospital: val('cHospital'),
+          bloodCenter: val('cCentre'),
+          wardBed: val('cWard'),
+          doctorName: val('cDoctor'),
+          attendantName: val('cAttName'),
+          attendantPhone: val('cAttPhone')
+        });
+      }
+      return Object.assign(base, {
+        reference: val('cRef'),
+        fromLocation: val('cFrom'),
+        toLocation: val('cTo'),
+        amount: val('cAmount'),
+        amountAgainst: val('cAgainst'),
+        packageDetails: val('cPackage'),
+        attendantName: val('cAttName2'),
+        attendantPhone: val('cPhone2')
+      });
+    };
+
+    // The first trip a job needs. A blood case starts by fetching the sample; an errand is
+    // the single trip itself.
+    const firstTrip = t => (t === 'BLOOD' ? 'SAMPLE_PICKUP' : t);
 
     const save = async andAssign => {
       const payload = collect();
-      if (!payload.patientName) return toast('Enter the patient name', 'error');
-      if (!payload.hospital || !payload.bloodCenter) return toast('Add a hospital and a blood centre first', 'error');
       try {
         const kase = await API.post('/api/cases', payload);
-        toast('Case ' + kase.caseNo + ' created', 'ok');
+        toast(kase.caseNo + ' created', 'ok');
         UI.closeDrawer();
         await load();
-        if (andAssign) pickRunner(rid => assign(kase._id, 'SAMPLE_PICKUP', rid));
+        if (andAssign) pickRunner(rid => assign(kase._id, firstTrip(payload.jobType), rid));
       } catch (e) { toast(e.message, 'error'); }
     };
 
     document.getElementById('caseSave').addEventListener('click', () => save(false));
     document.getElementById('caseSaveAssign').addEventListener('click', () => save(true));
+    showFor('BLOOD');
   }
 
   async function openCase(id) {
@@ -210,7 +312,7 @@ const Cases = (function () {
 
     const legs = (c.trips || []).map(t =>
       '<div class="job" data-trip="' + t._id + '" style="margin-bottom:8px">' +
-      '<div class="job__top"><span class="job__name">' + (t.type === 'SAMPLE_PICKUP' ? 'Sample pickup' : 'Blood delivery') + '</span>' +
+      '<div class="job__top"><span class="job__name">' + F.jobTitle(t.type) + '</span>' +
       '<span class="job__no mono">' + F.esc(t.tripNo) + '</span></div>' +
       '<div class="job__line">' + F.esc(t.runner ? t.runner.name : 'Unassigned') + ' &middot; ' + F.stageLabel(t.type, t.status) + '</div>' +
       '<div class="job__line">Assigned ' + F.dateTime(t.assignedAt) + (t.completedAt ? ' &middot; finished ' + F.dateTime(t.completedAt) : '') + '</div>' +

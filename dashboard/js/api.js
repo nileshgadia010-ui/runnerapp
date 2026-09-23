@@ -97,17 +97,45 @@ const F = {
     return String(s === null || s === undefined ? '' : s)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   },
+  // What the runner is carrying, per job type. Only the middle of the journey differs -
+  // the going and the arriving read the same whatever is in his bag.
+  jobTitle(type) {
+    return ({
+      SAMPLE_PICKUP: 'Sample pickup',
+      BLOOD_DELIVERY: 'Blood delivery',
+      COLLECTION_SAMPLE: 'Sample collection',
+      PAYMENT_COLLECT: 'Payment collection',
+      PACKAGE_DELIVER: 'Package delivery'
+    })[type] || 'Job';
+  },
+
   stageLabel(type, status) {
     const sample = type === 'SAMPLE_PICKUP';
+    const blood = sample || type === 'BLOOD_DELIVERY';
+    const carried = ({
+      SAMPLE_PICKUP: 'Sample collected',
+      BLOOD_DELIVERY: 'Units loaded',
+      COLLECTION_SAMPLE: 'Sample collected',
+      PAYMENT_COLLECT: 'Payment collected',
+      PACKAGE_DELIVER: 'Package picked up'
+    })[type] || 'Picked up';
+    const handed = ({
+      SAMPLE_PICKUP: 'Sample handed over',
+      BLOOD_DELIVERY: 'Blood delivered',
+      COLLECTION_SAMPLE: 'Sample handed over',
+      PAYMENT_COLLECT: 'Payment handed over',
+      PACKAGE_DELIVER: 'Package delivered'
+    })[type] || 'Delivered';
+
     return ({
       ASSIGNED: 'Waiting for the runner to accept',
       ACCEPTED: 'Accepted',
-      EN_ROUTE_PICKUP: sample ? 'On the way to hospital' : 'On the way to blood centre',
-      AT_PICKUP: sample ? 'At hospital' : 'At blood centre',
-      PICKED: sample ? 'Sample collected' : 'Units loaded',
-      EN_ROUTE_DROP: sample ? 'Returning to blood centre' : 'On the way to hospital',
-      AT_DROP: sample ? 'At blood centre' : 'At hospital',
-      COMPLETED: sample ? 'Sample handed over' : 'Blood delivered',
+      EN_ROUTE_PICKUP: blood ? (sample ? 'On the way to hospital' : 'On the way to blood centre') : 'On the way to pick up',
+      AT_PICKUP: blood ? (sample ? 'At hospital' : 'At blood centre') : 'At the pickup point',
+      PICKED: carried,
+      EN_ROUTE_DROP: blood ? (sample ? 'Returning to blood centre' : 'On the way to hospital') : 'On the way to drop',
+      AT_DROP: blood ? (sample ? 'At blood centre' : 'At hospital') : 'At the drop point',
+      COMPLETED: handed,
       REJECTED: 'Declined by runner',
       CANCELLED: 'Cancelled'
     })[status] || status;

@@ -13,6 +13,7 @@ import android.provider.MediaStore;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -175,7 +176,9 @@ public class TripActivity extends BaseActivity {
         String[] next = nextStage(trip.optString("type"), status());
         if (next == null) {
             Anim.show(actionBtn, false);
-            stageText.setText(getString(sample ? R.string.job_done_sample : R.string.job_done_blood));
+            stageText.setText(getString(isBlood()
+                    ? (sample ? R.string.job_done_sample : R.string.job_done_blood)
+                    : R.string.job_done_generic));
         } else {
             actionBtn.setVisibility(View.VISIBLE);
             actionBtn.setEnabled(true);
@@ -198,8 +201,30 @@ public class TripActivity extends BaseActivity {
         }
     }
 
+    /**
+     * The line under the name. A blood job shows the clinical detail the runner has to match
+     * at the counter; a payment job shows the amount; a parcel shows what is inside. Nothing
+     * else is sent to the phone, so nothing else can appear here.
+     */
     private String metaLine() {
         StringBuilder sb = new StringBuilder();
+
+        String type = trip.optString("type");
+        if ("PAYMENT_COLLECT".equals(type)) {
+            String amt = trip.optString("amount", "");
+            if (!amt.isEmpty() && !"null".equals(amt)) sb.append(getString(R.string.amount_to_collect, amt));
+            String against = trip.optString("amountAgainst", "");
+            if (!against.isEmpty() && !"null".equals(against)) {
+                if (sb.length() > 0) sb.append("  |  ");
+                sb.append(getString(R.string.amount_against, against));
+            }
+            return sb.toString();
+        }
+        if ("PACKAGE_DELIVER".equals(type)) {
+            String what = trip.optString("packageDetails", "");
+            return what.isEmpty() || "null".equals(what) ? "" : getString(R.string.package_is, what);
+        }
+
         String[] fields = {"patientAge", "patientGender", "bloodGroup", "component"};
         for (String f : fields) {
             String v = trip.optString(f, "");
@@ -230,16 +255,32 @@ public class TripActivity extends BaseActivity {
         stageTimer.setText(stage >= 0 ? Clock.hms(stage / 1000) : "--:--");
     }
 
+    /** True for the two blood legs; the other three job types are plain errands. */
+    private boolean isBlood() {
+        String t = trip.optString("type");
+        return "SAMPLE_PICKUP".equals(t) || "BLOOD_DELIVERY".equals(t);
+    }
+
     private String stageLabel(boolean sample, String stage) {
+        String type = trip.optString("type");
+        boolean payment = "PAYMENT_COLLECT".equals(type);
+        boolean parcel = "PACKAGE_DELIVER".equals(type);
+
         switch (stage) {
             case "ASSIGNED": return getString(R.string.st_new_job);
             case "ACCEPTED": return getString(R.string.st_accepted);
             case "EN_ROUTE_PICKUP": return getString(sample ? R.string.st_enroute_hosp : R.string.st_enroute_centre);
             case "AT_PICKUP": return getString(sample ? R.string.st_at_hosp : R.string.st_at_centre);
-            case "PICKED": return getString(sample ? R.string.st_sample_taken : R.string.st_units_loaded);
+            case "PICKED":
+                if (payment) return getString(R.string.st_payment_taken);
+                if (parcel) return getString(R.string.st_package_taken);
+                return getString(sample || !isBlood() ? R.string.st_sample_taken : R.string.st_units_loaded);
             case "EN_ROUTE_DROP": return getString(sample ? R.string.st_return_centre : R.string.st_enroute_hosp);
             case "AT_DROP": return getString(sample ? R.string.st_at_centre : R.string.st_at_hosp);
-            case "COMPLETED": return getString(sample ? R.string.st_sample_handed : R.string.st_blood_delivered);
+            case "COMPLETED":
+                if (payment) return getString(R.string.st_payment_handed);
+                if (parcel) return getString(R.string.st_package_handed);
+                return getString(sample || !isBlood() ? R.string.st_sample_handed : R.string.st_blood_delivered);
             default: return stage;
         }
     }
@@ -247,31 +288,53 @@ public class TripActivity extends BaseActivity {
     /** The one place that decides what the big button does next. */
     String[] nextStage(String type, String status) {
         boolean sample = "SAMPLE_PICKUP".equals(type);
+        boolean bloodJob = sample || "BLOOD_DELIVERY".equals(type);
         switch (status) {
             case "ASSIGNED": return new String[]{"ACCEPTED", getString(R.string.btn_accept_job)};
             case "ACCEPTED": return new String[]{"EN_ROUTE_PICKUP", getString(sample ? R.string.btn_start_hosp : R.string.btn_start_centre)};
             case "EN_ROUTE_PICKUP": return new String[]{"AT_PICKUP", getString(sample ? R.string.btn_reached_hosp : R.string.btn_reached_centre)};
-            case "AT_PICKUP": return new String[]{"PICKED", getString(sample ? R.string.btn_sample_collected : R.string.btn_units_collected)};
+            case "AT_PICKUP":
+                if ("PAYMENT_COLLECT".equals(type)) return new String[]{"PICKED", getString(R.string.btn_payment_taken)};
+                if ("PACKAGE_DELIVER".equals(type)) return new String[]{"PICKED", getString(R.string.btn_package_taken)};
+                return new String[]{"PICKED", getString(sample || !bloodJob ? R.string.btn_sample_collected : R.string.btn_units_collected)};
             case "PICKED": return new String[]{"EN_ROUTE_DROP", getString(sample ? R.string.btn_start_back_centre : R.string.btn_start_hosp)};
             case "EN_ROUTE_DROP": return new String[]{"AT_DROP", getString(sample ? R.string.btn_reached_centre : R.string.btn_reached_hosp)};
-            case "AT_DROP": return new String[]{"COMPLETED", getString(sample ? R.string.btn_sample_handed : R.string.btn_take_photo)};
+            case "AT_DROP":
+                if ("PAYMENT_COLLECT".equals(type)) return new String[]{"COMPLETED", getString(R.string.btn_payment_handed)};
+                if ("PACKAGE_DELIVER".equals(type)) return new String[]{"COMPLETED", getString(R.string.btn_take_photo)};
+                return new String[]{"COMPLETED", getString(sample ? R.string.btn_sample_handed : R.string.btn_take_photo)};
             default: return null;
         }
     }
 
     private void advance() {
-        String[] next = nextStage(trip.optString("type"), status());
+        String type = trip.optString("type");
+        String[] next = nextStage(type, status());
         if (next == null) return;
         String stage = next[0];
-        boolean sample = "SAMPLE_PICKUP".equals(trip.optString("type"));
 
-        if ("PICKED".equals(stage)) { askExtra(sample); return; }
-        if ("COMPLETED".equals(stage) && !sample) { takePhoto(); return; }
+        if ("PICKED".equals(stage)) { askExtra(type); return; }
+
+        // A photo is the proof for the two jobs where something physical changes hands and
+        // somebody might later dispute it: blood units at a bedside, and a parcel. A sample
+        // going back to our own centre and cash handed to our own office do not need one.
+        boolean needsProof = "BLOOD_DELIVERY".equals(type) || "PACKAGE_DELIVER".equals(type);
+        if ("COMPLETED".equals(stage) && needsProof) { takePhoto(); return; }
+
         send(stage, null, null, null);
     }
 
-    /** Barcode on the sample leg, unit count on the delivery leg. */
-    private void askExtra(boolean sample) {
+    /**
+     * What to capture when the runner says he has the thing in his hand. Each job type has
+     * exactly one number worth asking for, and nothing else: the tube's barcode, how many
+     * units, or how much money. A parcel needs nothing - he either has it or he does not.
+     */
+    private void askExtra(String type) {
+        if ("PACKAGE_DELIVER".equals(type)) { send("PICKED", null, null, null); return; }
+
+        if ("PAYMENT_COLLECT".equals(type)) { askPayment(); return; }
+
+        boolean sample = "SAMPLE_PICKUP".equals(type) || "COLLECTION_SAMPLE".equals(type);
         EditText input = new EditText(this);
         if (sample) input.setHint(R.string.barcode_hint);
         else { input.setHint(R.string.units_hint); input.setInputType(android.text.InputType.TYPE_CLASS_NUMBER); }
@@ -282,6 +345,37 @@ public class TripActivity extends BaseActivity {
                 .setPositiveButton(R.string.save, (d, w) -> {
                     String v = input.getText().toString().trim();
                     send("PICKED", sample ? v : null, sample ? null : v, null);
+                })
+                .setNegativeButton(R.string.cancel, null)
+                .show();
+    }
+
+    /** Amount plus how it was paid, so the office can reconcile it the same evening. */
+    private void askPayment() {
+        final EditText amount = new EditText(this);
+        amount.setHint(R.string.amount_hint);
+        amount.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+
+        final String[] modes = { "CASH", "CHEQUE", "UPI", "OTHER" };
+        final String[] labels = {
+                getString(R.string.mode_cash), getString(R.string.mode_cheque),
+                getString(R.string.mode_upi), getString(R.string.mode_other)
+        };
+        final int[] picked = { 0 };
+
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        int pad = Math.round(getResources().getDisplayMetrics().density * 20);
+        box.setPadding(pad, pad / 2, pad, 0);
+        box.addView(amount);
+
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.amount_title)
+                .setView(box)
+                .setSingleChoiceItems(labels, 0, (d, which) -> picked[0] = which)
+                .setPositiveButton(R.string.save, (d, w) -> {
+                    String v = amount.getText().toString().trim();
+                    sendPayment(v, modes[picked[0]]);
                 })
                 .setNegativeButton(R.string.cancel, null)
                 .show();
@@ -324,6 +418,14 @@ public class TripActivity extends BaseActivity {
     /**
      * Sends one stage. Everything except the photo handover moves the screen first.
      */
+    private String pendingAmount = null, pendingMode = null;
+
+    private void sendPayment(String amount, String mode) {
+        pendingAmount = amount;
+        pendingMode = mode;
+        send("PICKED", null, null, null);
+    }
+
     private void send(final String stage, final String barcode, final String units, final File photo) {
         final boolean needsPhoto = photo != null;
         final Location l = lastLocation();
@@ -335,6 +437,10 @@ public class TripActivity extends BaseActivity {
         fields.put("at", Clock.nowIso());
         if (barcode != null && !barcode.isEmpty()) fields.put("barcode", barcode);
         if (units != null && !units.isEmpty()) fields.put("units", units);
+        if (pendingAmount != null && !pendingAmount.isEmpty()) {
+            fields.put("amount", pendingAmount);
+            fields.put("paymentMode", pendingMode == null ? "CASH" : pendingMode);
+        }
         if (l != null) { fields.put("lat", String.valueOf(lat)); fields.put("lng", String.valueOf(lng)); }
 
         if (needsPhoto) {
@@ -375,6 +481,8 @@ public class TripActivity extends BaseActivity {
                     trip = data;
                     localStatus = null;
                     localStatusAt = null;
+                    pendingAmount = null;
+                    pendingMode = null;
                     if ("COMPLETED".equals(stage)) {
                         Toast.makeText(this, R.string.job_finished, Toast.LENGTH_LONG).show();
                         finish();

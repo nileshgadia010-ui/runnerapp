@@ -45,7 +45,7 @@ const Reports = (function () {
     host.innerHTML = tripRows.map(r =>
       '<tr><td class="mono">' + F.esc(r.tripNo) + '</td>' +
       '<td class="mono" style="font-size:12px">' + F.esc(r.caseNo || '') + '</td>' +
-      '<td>' + (r.type === 'SAMPLE_PICKUP' ? 'Sample' : 'Delivery') + '</td>' +
+      '<td>' + F.jobTitle(r.type) + '</td>' +
       '<td>' + F.esc(r.runner || '-') + '</td>' +
       '<td style="font-size:12px">' + F.esc(r.pickup) + ' &rarr; ' + F.esc(r.drop) + '</td>' +
       '<td><span class="chip ' + (r.status === 'COMPLETED' ? 'chip--green' : ['REJECTED', 'CANCELLED'].includes(r.status) ? 'chip--red' : 'chip--blue') + '">' +

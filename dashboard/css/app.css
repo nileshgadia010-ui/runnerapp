@@ -398,8 +398,11 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .pin-wrap:has(.pin--green) { color: var(--jade); }
 .pin-wrap:has(.pin--amber) { color: var(--amber); }
 
-/* Moving the marker between two pings should glide, not teleport. */
-.leaflet-marker-icon { transition: transform .6s linear; }
+/* Moving the marker between two pings should glide, not teleport.
+   The class is added after a pin is first placed, so a new marker lands where it belongs
+   instead of sliding in from the map origin. Leaflet positions markers with a transform,
+   which is the property being eased here. */
+.leaflet-marker-icon.pin-moving { transition: transform 1.6s linear; }
 
 .proof-shot { width: 100%; border-radius: 8px; border: 1px solid var(--line); cursor: zoom-in; display: block; }
 .proof-shot:hover { border-color: var(--crimson); }
@@ -422,6 +425,21 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .photoview__gone { color: #FFD9DE; background: rgba(200,16,46,.25); padding: 28px; border-radius: var(--radius); font-size: 14px; }
 .photoview__open { display: inline-block; margin-top: 10px; color: rgba(255,255,255,.7); font-size: 12px; }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+/* Job type chooser at the top of the new-job drawer. Four cards rather than a dropdown,
+   because the choice changes the rest of the form and the desk should see all four options
+   and their consequences at once. */
+.jobtypes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 18px; }
+.jobtype {
+  text-align: left; padding: 12px 14px; border-radius: var(--radius);
+  border: 1px solid var(--line); background: var(--paper); cursor: pointer;
+  transition: border-color .15s ease, background .15s ease, transform .15s ease;
+}
+.jobtype:hover { transform: translateY(-1px); border-color: #C9D2E0; }
+.jobtype b { display: block; font-size: 14px; color: var(--ink); }
+.jobtype span { display: block; font-size: 11px; color: var(--muted); margin-top: 2px; }
+.jobtype.is-on { border-color: var(--crimson); background: var(--crimson-soft); box-shadow: inset 0 0 0 1px var(--crimson); }
+.jobtype.is-on b { color: var(--crimson); }
 
 /* Rights checklist in the staff drawer. Plain rows, big tap targets - this is read by
    someone deciding what a colleague may do, so clarity beats density. */
