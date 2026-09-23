@@ -1,5 +1,6 @@
 require('dotenv').config();
 const path = require('path');
+const fs = require('fs');
 const http = require('http');
 const express = require('express');
 const cors = require('cors');
@@ -47,7 +48,38 @@ app.use('/uploads', (req, res) => {
            'storage were kept on the server disk, which the host clears on every deploy.'
   });
 });
-app.use(express.static(path.join(__dirname, '..', 'dashboard')));
+/*
+ * Cache busting.
+ *
+ * A browser holds on to css/app.css and js/*.js, so a deploy could land on the server while
+ * every desk kept running yesterday's code - which is indistinguishable from the fix not
+ * working, and cost real time to diagnose more than once. Telling people to press Ctrl+F5
+ * is not a fix; it is a rule they will forget.
+ *
+ * So the two HTML pages are served through here with a build stamp appended to every local
+ * asset. The stamp is set once when the process starts, which means every deploy produces
+ * new URLs and every browser fetches fresh files on its own. Nothing else changes: the
+ * assets themselves are still plain static files.
+ */
+const BUILD = String(Date.now());
+const DASHBOARD = path.join(__dirname, '..', 'dashboard');
+
+function sendPage(file, res, next) {
+  fs.readFile(path.join(DASHBOARD, file), 'utf8', (err, html) => {
+    if (err) return next();
+    res.type('html').send(
+      html.replace(/(href|src)="((?:css|js)\/[^"?]+)"/g, '$1="$2?v=' + BUILD + '"')
+    );
+  });
+}
+
+app.get(['/', '/index.html'], (req, res, next) => sendPage('index.html', res, next));
+app.get('/app.html', (req, res, next) => sendPage('app.html', res, next));
+
+// Lets anyone confirm what is actually running, without guessing from behaviour.
+app.get('/api/version', (req, res) => res.json({ build: BUILD, startedAt: new Date(Number(BUILD)) }));
+
+app.use(express.static(DASHBOARD));
 
 app.get('/api/health', (req, res) => res.json({ ok: true, time: new Date() }));
 

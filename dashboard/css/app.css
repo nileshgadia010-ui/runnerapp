@@ -204,6 +204,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .rail__user strong { display: block; }
 .rail__user span { color: rgba(255,255,255,.55); text-transform: capitalize; }
 .rail__out { margin-top: 10px; }
+.rail__build { margin-top: 10px; font-size: 11px; color: rgba(255,255,255,.4); }
 
 /* min-width: 0 matters here. A grid item's default minimum is its content size, so a wide
    child - a map canvas, a long table - can force this column past the 1fr track it was given
@@ -452,7 +453,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
  * Both transforms live on one property because a second transform would overwrite the first.
  */
 .rider__art {
-  display: block;
+  display: block; position: relative; z-index: 1;
   transform: rotate(var(--tilt, 0deg));
   transform-origin: 50% 80%;
   transition: transform .5s ease-out;
@@ -469,7 +470,6 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   margin-left: -20px; border-radius: 50%; background: currentColor; opacity: .22;
   animation: halo 2.2s ease-out infinite; pointer-events: none; z-index: 0;
 }
-.rider__art { position: relative; z-index: 1; }
 
 /* Moving the marker between two pings should glide, not teleport.
    The class is added after a pin is first placed, so a new marker lands where it belongs

@@ -120,6 +120,15 @@ const Main = (function () {
     });
     document.getElementById('signOut').addEventListener('click', () => { API.clear(); location.href = 'index.html'; });
 
+    // Show when this server was deployed, so "is my change live yet" is a glance, not a guess.
+    API.get('/api/version').then(v => {
+      const el = document.getElementById('buildStamp');
+      if (!el || !v || !v.startedAt) return;
+      const d = new Date(v.startedAt);
+      el.textContent = 'Deployed ' + d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) +
+        ' ' + d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' });
+    }).catch(() => {});
+
     document.querySelectorAll('.rail__link').forEach(b => b.addEventListener('click', () => go(b.dataset.page)));
     document.getElementById('drawerClose').addEventListener('click', UI.closeDrawer);
     document.getElementById('scrim').addEventListener('click', UI.closeDrawer);
