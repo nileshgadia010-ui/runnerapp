@@ -568,3 +568,70 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
+
+/* ---------- row delete ----------
+   Quiet until the row is hovered, so a page of records does not read as a page of bins,
+   but always reachable by keyboard. */
+.rowdel {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; padding: 0;
+  border: 1px solid transparent; border-radius: 7px;
+  background: transparent; color: var(--muted);
+  cursor: pointer; opacity: 0; transition: opacity .15s, color .15s, background .15s, border-color .15s;
+}
+tr:hover .rowdel, .rowdel:focus-visible { opacity: 1; }
+.rowdel:hover { color: var(--crimson); background: var(--crimson-soft); border-color: var(--crimson-soft); }
+.rowdel:focus-visible { outline: 2px solid var(--crimson); outline-offset: 1px; }
+.rowdel[disabled] { opacity: .4; cursor: wait; }
+@media (hover: none) { .rowdel { opacity: 1; } }
+
+/* ---------- big-number tiles above a report ---------- */
+.tiles {
+  display: grid; gap: 10px; margin-bottom: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+.tile {
+  background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 14px 16px; display: flex; flex-direction: column; gap: 2px;
+  /* Without this a grid item refuses to shrink below its longest word, and a row of nine
+     tiles walks off the right edge of the page. */
+  min-width: 0; overflow-wrap: anywhere;
+}
+.tile b {
+  font-size: 30px; line-height: 1.1; font-weight: 700; color: var(--ink);
+  font-variant-numeric: tabular-nums; letter-spacing: -0.5px;
+}
+.tile span { font-size: 11px; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
+.tile small { font-size: 12px; color: var(--muted); }
+.tile--alert b { color: var(--crimson); }
+.tile--alert { border-color: var(--crimson-soft); background: var(--crimson-soft); }
+
+/* ---------- row action cell ----------
+   Keeps the Open/Edit button and the bin on one line, with the bin hard right so a column
+   of them reads as a column. */
+.rowacts { white-space: nowrap; }
+.rowacts .rowdel { margin-left: 6px; vertical-align: middle; }
+
+/* ---------- day sheet drawer ---------- */
+.kvs { display: grid; gap: 1px; background: var(--line); border: 1px solid var(--line);
+  border-radius: var(--radius); overflow: hidden; margin-bottom: 18px; }
+.kv { display: flex; justify-content: space-between; gap: 12px; align-items: baseline;
+  background: var(--paper); padding: 10px 13px; font-size: 13px; }
+.kv span { color: var(--muted); }
+.kv b { text-align: right; }
+
+.drawer__h { font-size: 12px; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--muted); margin: 0 0 10px; }
+
+/* The day as a timeline: the times run down a rule, each stop hangs off it. */
+.stops { list-style: none; margin: 0; padding: 0 0 0 4px; position: relative; }
+.stops::before { content: ''; position: absolute; left: 57px; top: 8px; bottom: 8px;
+  width: 1px; background: var(--line); }
+.stop { display: flex; gap: 14px; padding: 0 0 18px; position: relative; }
+.stop:last-child { padding-bottom: 0; }
+.stop__time { width: 54px; flex: none; text-align: right; font-size: 12px; color: var(--muted);
+  padding-top: 1px; }
+.stop__body { flex: 1; padding-left: 10px; position: relative; }
+.stop__body::before { content: ''; position: absolute; left: -7px; top: 6px;
+  width: 7px; height: 7px; border-radius: 50%; background: var(--crimson);
+  box-shadow: 0 0 0 3px var(--paper); }

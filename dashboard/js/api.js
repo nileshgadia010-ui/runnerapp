@@ -82,6 +82,7 @@ const F = {
   },
   date(d) { return d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' }) : '--'; },
   today() { return new Date(Date.now() + 330 * 60000).toISOString().slice(0, 10); },
+  daysAgo(n) { return new Date(Date.now() + 330 * 60000 - n * 86400000).toISOString().slice(0, 10); },
   ago(d) {
     if (!d) return 'never';
     const s = Math.round((Date.now() - new Date(d)) / 1000);

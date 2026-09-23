@@ -62,7 +62,7 @@ const Cases = (function () {
         UI.tatCell(p.crossmatch.value, p.crossmatch.grade) +
         UI.tatCell(p.delivery.value, p.delivery.grade) +
         UI.tatCell(p.total.value, p.total.grade) +
-        '<td>' + actionFor(c) + '</td></tr>';
+        '<td class="rowacts">' + actionFor(c) + UI.delBtn('case', c._id, 'case ' + (c.caseNo || '')) + '</td></tr>';
     }).join('');
 
     host.querySelectorAll('button[data-act]').forEach(b => b.addEventListener('click', e => {
@@ -70,6 +70,7 @@ const Cases = (function () {
       act(b.dataset.act, b.dataset.id);
     }));
     host.querySelectorAll('tr').forEach(tr => tr.addEventListener('click', () => openCase(tr.dataset.id)));
+    UI.wireDelete(host, load);
   }
 
   async function act(action, id) {

@@ -7,6 +7,7 @@ const Main = (function () {
     runners: () => Masters.bootRunners(),
     places: () => Masters.bootPlaces(),
     attendance: () => Masters.bootAttendance(),
+    daysheet: () => DaySheet.boot(),
     routes: () => Routes.boot(),
     reports: () => Reports.bootReports()
   };
@@ -57,6 +58,7 @@ const Main = (function () {
     runners: 'manageStaff',
     places: 'managePlaces',
     attendance: 'viewReports',
+    daysheet: 'viewReports',
     routes: 'viewReports',
     reports: 'viewReports'
   };

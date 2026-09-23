@@ -12,6 +12,15 @@ const Reports = (function () {
       document.getElementById('tripTo').value = F.today();
       document.getElementById('tripApply').addEventListener('click', loadTrips);
       document.getElementById('tripExport').addEventListener('click', exportTrips);
+      document.getElementById('tripExcel').addEventListener('click', function () {
+        UI.download('/api/reports/tat.xlsx', {
+          from: document.getElementById('tripFrom').value,
+          to: document.getElementById('tripTo').value,
+          runner: document.getElementById('tripRunner').value,
+          type: document.getElementById('tripType').value
+        }, this);
+      });
+      UI.wireDelete('tripRows', loadTrips);
 
       const runners = await API.get('/api/users', { role: 'runner' });
       document.getElementById('tripRunner').innerHTML = '<option value="">Everyone</option>' +
@@ -30,14 +39,18 @@ const Reports = (function () {
     tripRows = data.rows;
 
     const s = data.summary;
-    document.getElementById('tripSummary').innerHTML =
-      '<div class="strip" style="border:1px solid var(--line);border-radius:var(--radius)">' +
-      stat(s.trips, 'Trips') + stat(s.completed, 'Finished') +
-      stat(s.onTimePercent === null ? '--' : s.onTimePercent + '%', 'On time', s.onTimePercent >= 80 ? 'is-good' : 'is-alert') +
-      stat(s.breached, 'SLA missed', s.breached ? 'is-alert' : '') +
-      stat(F.mins(s.avgAccept), 'Avg accept') + stat(F.mins(s.avgToPickup), 'Avg to pickup') +
-      stat(F.mins(s.avgPickupDwell), 'Avg at pickup') + stat(F.mins(s.avgToDrop), 'Avg to drop') +
-      stat(F.mins(s.avgTotal), 'Avg full trip') + '</div>';
+    document.getElementById('tripSummary').innerHTML = UI.tiles([
+      { label: 'Trips', value: s.trips },
+      { label: 'Finished', value: s.completed },
+      { label: 'On time', value: s.onTimePercent === null ? '--' : s.onTimePercent + '%',
+        alert: s.onTimePercent !== null && s.onTimePercent < 80 },
+      { label: 'SLA missed', value: s.breached, alert: s.breached > 0 },
+      { label: 'Avg accept', value: F.mins(s.avgAccept) },
+      { label: 'Avg to pickup', value: F.mins(s.avgToPickup) },
+      { label: 'Avg at pickup', value: F.mins(s.avgPickupDwell) },
+      { label: 'Avg to drop', value: F.mins(s.avgToDrop) },
+      { label: 'Avg full trip', value: F.mins(s.avgTotal) }
+    ]);
 
     const host = document.getElementById('tripRows');
     if (!tripRows.length) { host.innerHTML = UI.emptyRow(13, 'No trips in this range'); return; }
@@ -52,7 +65,8 @@ const Reports = (function () {
       F.stageLabel(r.type, r.status) + '</span></td>' +
       cell(r.accept) + cell(r.toPickup) + cell(r.pickupDwell) + cell(r.toDrop) + cell(r.dropDwell) +
       '<td class="num ' + (r.grade === 'breach' ? 't-breach' : r.grade === 'warn' ? 't-warn' : 't-ok') + '"><b>' + F.mins(r.total) + '</b></td>' +
-      '<td><button class="btn btn--ghost btn--sm" data-trip="' + F.esc(r.tripNo) + '">Open</button></td></tr>').join('');
+      '<td class="rowacts"><button class="btn btn--ghost btn--sm" data-trip="' + F.esc(r.tripNo) + '">Open</button>' +
+      UI.delBtn('trip', r.id, 'job ' + (r.tripNo || '')) + '</td></tr>').join('');
 
     host.querySelectorAll('[data-trip]').forEach(b => b.addEventListener('click', async () => {
       const list = await API.get('/api/trips', { from: document.getElementById('tripFrom').value, to: document.getElementById('tripTo').value });
@@ -79,6 +93,7 @@ const Reports = (function () {
       document.getElementById('repFrom').value = F.today();
       document.getElementById('repTo').value = F.today();
       document.getElementById('repApply').addEventListener('click', loadCases);
+      UI.wireDelete('repRows', loadCases);
       document.getElementById('repExport').addEventListener('click', () =>
         UI.csv('ibs-case-tat.csv',
           ['Case', 'Patient', 'Hospital', 'Group', 'Component', 'Units', 'Priority', 'Stage', 'Raised', 'Closed',
@@ -106,7 +121,7 @@ const Reports = (function () {
       stat(s.onTimePercent === null ? '--' : s.onTimePercent + '%', 'On time', s.onTimePercent >= 80 ? 'is-good' : 'is-alert') + '</div>';
 
     const host = document.getElementById('repRows');
-    if (!caseRows.length) { host.innerHTML = UI.emptyRow(11, 'No cases in this range'); return; }
+    if (!caseRows.length) { host.innerHTML = UI.emptyRow(12, 'No cases in this range'); return; }
 
     host.innerHTML = caseRows.map(r =>
       '<tr><td class="mono">' + F.esc(r.caseNo) + '</td>' +
@@ -116,7 +131,8 @@ const Reports = (function () {
       '<td>' + UI.priorityChip(r.priority) + '</td>' +
       '<td>' + F.caseLabel(r.status) + '</td>' +
       cell(r.toAssign) + cell(r.sample) + cell(r.crossmatch) + cell(r.delivery) +
-      '<td class="num ' + (r.grade === 'breach' ? 't-breach' : r.grade === 'warn' ? 't-warn' : 't-ok') + '"><b>' + F.mins(r.total) + '</b></td></tr>').join('');
+      '<td class="num ' + (r.grade === 'breach' ? 't-breach' : r.grade === 'warn' ? 't-warn' : 't-ok') + '"><b>' + F.mins(r.total) + '</b></td>' +
+      '<td class="rowacts">' + UI.delBtn('case', r.id, 'case ' + (r.caseNo || '')) + '</td></tr>').join('');
   }
 
   return { bootTrips, bootReports };

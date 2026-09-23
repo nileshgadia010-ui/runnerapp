@@ -19,6 +19,14 @@ const Routes = (function () {
       document.getElementById('rtTo').value = F.today();
       document.getElementById('rtApply').addEventListener('click', load);
       document.getElementById('rtExport').addEventListener('click', exportCsv);
+      document.getElementById('rtExcel').addEventListener('click', function () {
+        UI.download('/api/reports/routes.xlsx', {
+          from: document.getElementById('rtFrom').value,
+          to: document.getElementById('rtTo').value,
+          runner: document.getElementById('rtRunner').value
+        }, this);
+      });
+      UI.wireDelete('rtRows', load);
       await fillRunners();
     }
     await load();
@@ -62,9 +70,10 @@ const Routes = (function () {
       '<td>' + (r.completedAt ? F.time(r.completedAt) : '<span class="chip chip--amber">not finished</span>') + '</td>' +
       '<td class="num">' + (r.minutes === null ? '-' : F.mins(r.minutes)) + '</td>' +
       '<td class="num"><b>' + r.km + ' km</b></td>' +
-      '<td>' + (r.hasTrail
+      '<td class="rowacts">' + (r.hasTrail
         ? '<button class="btn btn--ghost btn--sm" data-view="' + r.id + '">View route</button>'
-        : '<span style="font-size:12px;color:var(--muted)">no path kept</span>') + '</td>' +
+        : '<span style="font-size:12px;color:var(--muted)">no path kept</span>') +
+        UI.delBtn('trip', r.id, 'job ' + (r.tripNo || '')) + '</td>' +
       '</tr>').join('');
 
     host.querySelectorAll('[data-view]').forEach(b =>

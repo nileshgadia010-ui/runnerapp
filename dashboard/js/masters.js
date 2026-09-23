@@ -34,11 +34,13 @@ const Masters = (function () {
       '<td><span class="chip">' + F.esc(u.role) + '</span></td>' +
       '<td>' + (u.role === 'runner' ? UI.dutyChip(u.dutyState) : '-') + (u.active ? '' : ' <span class="chip chip--red">switched off</span>') + '</td>' +
       '<td>' + (u.lastSeenAt ? F.ago(u.lastSeenAt) : '-') + '</td>' +
-      '<td><button class="btn btn--ghost btn--sm" data-edit="' + u.id + '">Edit</button></td>' +
+      '<td class="rowacts"><button class="btn btn--ghost btn--sm" data-edit="' + u.id + '">Edit</button>' +
+      UI.delBtn('staff', u.id, F.esc(u.name)) + '</td>' +
       '</tr>').join('');
 
     host.querySelectorAll('[data-edit]').forEach(b =>
       b.addEventListener('click', () => staffForm(staff.find(s => String(s.id) === b.dataset.edit))));
+    UI.wireDelete(host, loadStaff);
   }
 
   // "09:00 - 18:00 - off Sun" in one short line, or a dash when nothing is set.
@@ -165,10 +167,12 @@ const Masters = (function () {
       '<td>' + F.esc(p.contactPerson || '') + ' ' + F.esc(p.phone || '') + '</td>' +
       '<td class="mono" style="font-size:12px">' + Number(p.lat).toFixed(5) + ', ' + Number(p.lng).toFixed(5) + '</td>' +
       '<td class="num">' + (p.geofence || 200) + ' m</td>' +
-      '<td><button class="btn btn--ghost btn--sm" data-edit="' + p._id + '">Edit</button></td></tr>').join('');
+      '<td class="rowacts"><button class="btn btn--ghost btn--sm" data-edit="' + p._id + '">Edit</button>' +
+      UI.delBtn('place', p._id, F.esc(p.name)) + '</td></tr>').join('');
 
     host.querySelectorAll('[data-edit]').forEach(b =>
       b.addEventListener('click', () => placeForm(places.find(p => String(p._id) === b.dataset.edit))));
+    UI.wireDelete(host, loadPlaces);
   }
 
   function placeForm(p) {
@@ -362,6 +366,12 @@ const Masters = (function () {
       document.getElementById('attFrom').value = F.today();
       document.getElementById('attTo').value = F.today();
       document.getElementById('attApply').addEventListener('click', loadAttendance);
+      document.getElementById('attExcel').addEventListener('click', function () {
+        UI.download('/api/reports/movement.xlsx', {
+          from: document.getElementById('attFrom').value,
+          to: document.getElementById('attTo').value
+        }, this);
+      });
       document.getElementById('attExport').addEventListener('click', () =>
         UI.csv('ibs-attendance.csv',
           ['Date', 'Runner', 'Code', 'First in', 'Last out', 'Sessions', 'Hours', 'Trips',
@@ -379,7 +389,7 @@ const Masters = (function () {
     });
     attRows = data.rows;
     const host = document.getElementById('attRows');
-    if (!attRows.length) { host.innerHTML = UI.emptyRow(11, 'No punches in this range'); return; }
+    if (!attRows.length) { host.innerHTML = UI.emptyRow(12, 'No punches in this range'); return; }
 
     host.innerHTML = attRows.map(r =>
       '<tr><td>' + F.date(r.date) + '</td>' +
@@ -392,7 +402,10 @@ const Masters = (function () {
       '<td class="num">' + odoCell(r) + '</td>' +
       '<td class="num">' + (r.gpsKm || 0) + '</td>' +
       '<td>' + photoCell(r) + '</td>' +
-      '<td style="font-size:12px;color:var(--muted)">' + F.esc(r.punchInPlace) + '</td></tr>').join('');
+      '<td style="font-size:12px;color:var(--muted)">' + F.esc(r.punchInPlace) + '</td>' +
+      '<td class="rowacts">' + UI.delBtn('attendance', r.id, 'the ' + r.date + ' punch record for ' + (r.runner || 'this runner')) + '</td></tr>').join('');
+
+    UI.wireDelete(host, loadAttendance);
   }
 
   // Meter kilometres, with the reading range underneath and a flag when the meter and the
