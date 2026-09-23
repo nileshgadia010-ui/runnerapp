@@ -2,7 +2,9 @@ const router = require('express').Router();
 const User = require('../models/User');
 const Trip = require('../models/Trip');
 const Attendance = require('../models/Attendance');
-const { roadKm, etaMinutes } = require('../services/geo');
+const Location = require('../models/Location');
+const LocationPing = require('../models/LocationPing');
+const { roadKm, etaMinutes, kmFromPings } = require('../services/geo');
 const { ISTDate } = require('../services/dispatch');
 const { auth, allow, can } = require('../middleware/auth');
 
@@ -81,6 +83,107 @@ router.get('/live', async (req, res) => {
     trip: r.activeTrip ? byId[String(r.activeTrip)] || null : null
   })));
 });
+
+/*
+ * Where one runner is, and where his day started.
+ *
+ * The board could already show a dot on a map, which answers "is he moving" but not the
+ * question the desk actually asks out loud: where IS he, and where did he punch in from.
+ * A pair of coordinates is not an answer a human can act on.
+ *
+ * So each point is reported against the places the office already knows - "1.2 km from
+ * Sterling Hospital, Memnagar" - which is both more useful than a street address and free
+ * of any dependency on an outside geocoder that could be slow, rate-limited or simply down.
+ */
+router.get('/:id/where', async (req, res) => {
+  const runner = await User.findById(req.params.id);
+  if (!runner || runner.role !== 'runner') return res.status(404).json({ error: 'Runner not found' });
+
+  const places = await Location.find({ active: { $ne: false } })
+    .select('name area city type lat lng').lean();
+
+  const date = ISTDate();
+  const att = await Attendance.findOne({ runner: runner._id, date }).lean();
+  const session = att && att.sessions && att.sessions.length ? att.sessions[0] : null;
+  const openSession = att && (att.sessions || []).find(x => x.inAt && !x.outAt);
+
+  // Distance covered today, from the breadcrumb trail.
+  const dayStart = new Date(date + 'T00:00:00+05:30');
+  const pings = await LocationPing.find({ runner: runner._id, at: { $gte: dayStart } })
+    .select('lat lng at').sort({ at: 1 }).lean();
+
+  const loc = runner.lastLocation || {};
+  const stale = Date.now() - 3 * 60 * 1000;
+
+  res.json({
+    runner: {
+      id: runner._id, name: runner.name, empCode: runner.empCode,
+      phone: runner.phone, vehicleNo: runner.vehicleNo,
+      dutyState: runner.dutyState, lastSeenAt: runner.lastSeenAt,
+      signalLost: runner.dutyState !== 'OFF_DUTY' &&
+                  (!runner.lastSeenAt || new Date(runner.lastSeenAt).getTime() < stale)
+    },
+
+    now: loc.lat ? {
+      lat: loc.lat, lng: loc.lng, at: loc.at,
+      accuracy: loc.accuracy, speed: loc.speed, battery: loc.battery,
+      nearest: nearestPlace(loc.lat, loc.lng, places)
+    } : null,
+
+    punchIn: session && session.inAt ? {
+      at: session.inAt, lat: session.inLat, lng: session.inLng,
+      odo: session.inOdo, photo: session.inOdoPhoto,
+      nearest: nearestPlace(session.inLat, session.inLng, places)
+    } : null,
+
+    punchOut: session && session.outAt ? {
+      at: session.outAt, lat: session.outLat, lng: session.outLng,
+      odo: session.outOdo, photo: session.outOdoPhoto,
+      nearest: nearestPlace(session.outLat, session.outLng, places)
+    } : null,
+
+    onDuty: !!openSession,
+    sessions: (att && att.sessions || []).map(x => ({
+      inAt: x.inAt, outAt: x.outAt, minutes: x.minutes,
+      inNearest: nearestPlace(x.inLat, x.inLng, places),
+      outNearest: nearestPlace(x.outLat, x.outLng, places)
+    })),
+
+    today: {
+      minutes: att ? (att.sessions || []).reduce((sum, x) => sum + (x.outAt ? (x.minutes || 0) : 0), 0)
+                     + (openSession ? Math.round((Date.now() - new Date(openSession.inAt).getTime()) / 60000) : 0)
+                   : 0,
+      trips: att ? att.tripsDone : 0,
+      km: kmFromPings(pings),
+      odoStart: att ? att.startOdo : 0
+    },
+
+    // The trail, so the card can draw where he has been today.
+    trail: pings.map(p => [p.lat, p.lng]),
+    serverTime: new Date()
+  });
+});
+
+/*
+ * The closest place the office has on file, with the road distance to it. Returns null when
+ * nothing is within 25 km, because "nearest: Civil Hospital, 60 km" tells nobody anything.
+ */
+function nearestPlace(lat, lng, places) {
+  if (typeof lat !== 'number' || typeof lng !== 'number' || (!lat && !lng)) return null;
+
+  let best = null;
+  for (const p of places) {
+    if (typeof p.lat !== 'number') continue;
+    const km = roadKm(lat, lng, p.lat, p.lng);
+    if (km === null) continue;
+    if (!best || km < best.km) best = { name: p.name, area: p.area, city: p.city, type: p.type, km: km };
+  }
+  if (!best || best.km > 25) return null;
+
+  // Under 300 metres he is effectively standing there, and saying "0.2 km from" is fussy.
+  best.at = best.km <= 0.3;
+  return best;
+}
 
 // The stop the runner is heading to, and the road distance from where he is now.
 function toTarget(runner, trip) {

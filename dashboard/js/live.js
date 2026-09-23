@@ -425,15 +425,139 @@ const Live = (function () {
       if (!runners.length) { host.innerHTML = UI.empty('No runners added yet', 'Add staff from the Runners page.'); return; }
       const order = { ON_TRIP: 0, AVAILABLE: 1, BREAK: 2, OFF_DUTY: 3 };
       host.innerHTML = runners.slice().sort((a, b) => order[a.dutyState] - order[b.dutyState]).map(runnerRow).join('');
-      host.querySelectorAll('.runner-row').forEach(el => el.addEventListener('click', () => {
-        if (el.dataset.trip) selectTrip(el.dataset.trip);
-        else {
-          const r = runners.find(x => String(x.id) === el.dataset.runner);
-          if (r && r.lastLocation && r.lastLocation.lat) map.setView([r.lastLocation.lat, r.lastLocation.lng], 15);
-          else toast(r.name + ' has no location yet', 'error');
-        }
-      }));
+      host.querySelectorAll('.runner-row').forEach(el => el.addEventListener('click', () =>
+        openRunner(el.dataset.runner)));
     }
+  }
+
+  /*
+   * Everything the desk asks about one runner, on one screen.
+   *
+   * Clicking a name used to just slide the map over, which answered "is there a dot" and
+   * nothing else. The questions that actually get asked are where he is, where he punched in
+   * from, and how the day is going - all of which the system already knew and none of which
+   * it showed. Locations are named against the office's own places, because "1.2 km from
+   * Sterling Hospital" is something a coordinator can act on and a pair of coordinates is not.
+   */
+  async function openRunner(runnerId) {
+    let d;
+    try { d = await API.get('/api/users/' + runnerId + '/where'); }
+    catch (e) { return toast(e.message, 'error'); }
+
+    const r = d.runner;
+    const where = p => {
+      if (!p) return '<span style="color:var(--muted)">not known</span>';
+      if (!p.nearest) return '<span style="color:var(--muted)">away from every saved place</span>';
+      return p.nearest.at
+        ? '<b>At ' + F.esc(p.nearest.name) + '</b>'
+        : '<b>' + p.nearest.km + ' km from ' + F.esc(p.nearest.name) + '</b>' +
+          (p.nearest.area ? '<span style="color:var(--muted)"> &middot; ' + F.esc(p.nearest.area) + '</span>' : '');
+    };
+    const coords = p => p ? '<div class="mono" style="font-size:11px;color:var(--muted);margin-top:2px">' +
+      p.lat.toFixed(5) + ', ' + p.lng.toFixed(5) +
+      ' &middot; <a href="https://www.google.com/maps?q=' + p.lat + ',' + p.lng + '" target="_blank">open in maps</a></div>' : '';
+
+    const body =
+      '<div class="where">' +
+
+      '<div class="where__row">' +
+        '<div class="where__dot where__dot--now"></div>' +
+        '<div class="where__body">' +
+          '<div class="where__label">Right now</div>' +
+          where(d.now) + coords(d.now) +
+          (d.now ? '<div class="where__meta">Last ping ' + F.ago(d.now.at) +
+            (r.signalLost ? ' <span class="chip chip--amber">signal lost</span>' : '') +
+            (d.now.battery ? ' &middot; battery ' + d.now.battery + '%' : '') + '</div>' : '') +
+        '</div>' +
+      '</div>' +
+
+      '<div class="where__row">' +
+        '<div class="where__dot where__dot--in"></div>' +
+        '<div class="where__body">' +
+          '<div class="where__label">Punched in</div>' +
+          where(d.punchIn) + coords(d.punchIn) +
+          (d.punchIn ? '<div class="where__meta">' + F.time(d.punchIn.at) +
+            (d.punchIn.odo ? ' &middot; meter ' + d.punchIn.odo + ' km' : '') +
+            (d.punchIn.photo ? ' &middot; <a href="#" data-photo="' + d.punchIn.photo + '">meter photo</a>' : '') +
+            '</div>' : '<div class="where__meta">Not punched in today</div>') +
+        '</div>' +
+      '</div>' +
+
+      (d.punchOut ? '<div class="where__row">' +
+        '<div class="where__dot where__dot--out"></div>' +
+        '<div class="where__body">' +
+          '<div class="where__label">Punched out</div>' +
+          where(d.punchOut) + coords(d.punchOut) +
+          '<div class="where__meta">' + F.time(d.punchOut.at) +
+            (d.punchOut.odo ? ' &middot; meter ' + d.punchOut.odo + ' km' : '') + '</div>' +
+        '</div></div>' : '') +
+
+      '</div>' +
+
+      '<div class="grid-3" style="margin-top:18px">' +
+        stat(F.mins(d.today.minutes), 'On duty today') +
+        stat(d.today.km + ' km', 'Travelled today') +
+        stat(d.today.trips, 'Jobs finished') +
+      '</div>' +
+
+      (r.phone ? '<p style="margin-top:16px">' + F.esc(r.vehicleNo || '') +
+        (r.vehicleNo ? ' &middot; ' : '') +
+        '<a href="tel:' + F.esc(r.phone) + '">' + F.esc(r.phone) + '</a></p>' : '');
+
+    UI.openDrawer(r.name, body,
+      '<button class="btn btn--ghost" onclick="UI.closeDrawer()">Close</button>' +
+      '<button class="btn btn--red" id="whereShow">Show on the map</button>');
+
+    document.querySelectorAll('[data-photo]').forEach(a =>
+      a.addEventListener('click', e => { e.preventDefault(); UI.photo(a.dataset.photo, r.name + ' - meter'); }));
+
+    const show = document.getElementById('whereShow');
+    if (show) show.addEventListener('click', () => { UI.closeDrawer(); drawRunnerDay(d); });
+
+    // Draw it straight away too, so the map matches what the card is describing.
+    drawRunnerDay(d);
+  }
+
+  function stat(value, label) {
+    return '<div><b class="mono" style="font-size:19px;display:block">' + value + '</b>' +
+           '<span style="font-size:12px;color:var(--muted)">' + label + '</span></div>';
+  }
+
+  /*
+   * Puts one runner's day on the map: where he started, where he has been, where he is.
+   * Reuses the route layer, so opening a runner and opening a trip never fight over it.
+   */
+  function drawRunnerDay(d) {
+    routeLayer.clearLayers();
+    followTripId = null;
+    const bounds = [];
+
+    if (d.trail && d.trail.length > 1) {
+      L.polyline(d.trail, { color: '#1F5FD9', weight: 4, opacity: .8 }).addTo(routeLayer);
+      bounds.push.apply(bounds, d.trail);
+    }
+
+    if (d.punchIn && d.punchIn.lat) {
+      const p = [d.punchIn.lat, d.punchIn.lng];
+      L.marker(p, { icon: L.divIcon({ className: '', iconSize: [26, 26], iconAnchor: [13, 13],
+        html: '<div class="flagpin flagpin--in" title="Punched in">IN</div>' }) }).addTo(routeLayer)
+        .bindTooltip('Punched in ' + F.time(d.punchIn.at));
+      bounds.push(p);
+    }
+
+    if (d.punchOut && d.punchOut.lat) {
+      const p = [d.punchOut.lat, d.punchOut.lng];
+      L.marker(p, { icon: L.divIcon({ className: '', iconSize: [26, 26], iconAnchor: [13, 13],
+        html: '<div class="flagpin flagpin--out" title="Punched out">OUT</div>' }) }).addTo(routeLayer)
+        .bindTooltip('Punched out ' + F.time(d.punchOut.at));
+      bounds.push(p);
+    }
+
+    if (d.now && d.now.lat) bounds.push([d.now.lat, d.now.lng]);
+
+    if (bounds.length > 1) map.fitBounds(L.latLngBounds(bounds).pad(0.3));
+    else if (bounds.length === 1) map.setView(bounds[0], 15);
+    else toast('No location recorded for this runner yet', 'error');
   }
 
   const STAGE_ORDER = ['ASSIGNED', 'ACCEPTED', 'EN_ROUTE_PICKUP', 'AT_PICKUP', 'PICKED', 'EN_ROUTE_DROP', 'AT_DROP', 'COMPLETED'];
@@ -541,5 +665,5 @@ const Live = (function () {
     if (replay) replay.addEventListener('click', () => { UI.closeDrawer(); Main.go('live'); drawRoute(t._id); });
   }
 
-  return { boot, refresh, resize, moveRunner, openTrip, selectTrip, runnersCache: () => runners };
+  return { boot, refresh, resize, moveRunner, openTrip, openRunner, selectTrip, runnersCache: () => runners };
 })();
