@@ -176,7 +176,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .alert--ok { background: var(--jade-soft); color: var(--jade); }
 
 /* ---------- app shell ---------- */
-.shell { display: grid; grid-template-columns: var(--rail) 1fr; height: 100%; }
+.shell { display: grid; grid-template-columns: var(--rail) 1fr; height: 100%; overflow: hidden; }
 
 .rail { background: var(--ink); color: #fff; display: flex; flex-direction: column; padding: 18px 14px; }
 .rail__mark { display: flex; align-items: center; gap: 10px; padding: 0 8px 20px; font-weight: 700; }
@@ -205,7 +205,11 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .rail__user span { color: rgba(255,255,255,.55); text-transform: capitalize; }
 .rail__out { margin-top: 10px; }
 
-.main { display: flex; flex-direction: column; overflow: hidden; }
+/* min-width: 0 matters here. A grid item's default minimum is its content size, so a wide
+   child - a map canvas, a long table - can force this column past the 1fr track it was given
+   and push the whole shell sideways. Pinning the minimum to zero keeps the column honest and
+   lets the child scroll or clip instead. */
+.main { display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
 
 .strip {
   display: flex; gap: 0; align-items: stretch;
@@ -234,9 +238,30 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .card__body { padding: 14px; }
 
 /* ---------- live board ---------- */
-.live { display: grid; grid-template-columns: 1fr 392px; height: 100%; }
-#map { height: 100%; width: 100%; background: #E7EBF0; }
-.dock { border-left: 1px solid var(--line); background: var(--paper); display: flex; flex-direction: column; overflow: hidden; }
+.live { display: grid; grid-template-columns: 1fr 392px; height: 100%; min-height: 0; min-width: 0; }
+
+/*
+ * The map sits in its own stacking context, and that is not cosmetic.
+ *
+ * Leaflet gives its own layers z-index values from 400 (tiles) up to 1000 (zoom controls).
+ * Those numbers were written assuming the map owns the page. In this shell it does not - the
+ * drawer, the scrim and the toasts all have to sit above it. Without a stacking context here
+ * the tile layer alone outranked every panel in the app, so the trip drawer opened *behind*
+ * the map and its left half was painted over, which is exactly what it looked like: a drawer
+ * with its text sliced off down the middle.
+ *
+ * `position: relative` plus any z-index creates the context. Everything Leaflet does is then
+ * scoped inside this box and can never climb past z-index 0 at shell level.
+ */
+#map {
+  height: 100%; width: 100%; background: #E7EBF0;
+  position: relative; z-index: 0;
+  min-width: 0; min-height: 0;
+}
+
+/* The map must never paint outside its own column, whatever Leaflet positions internally. */
+.live > #map { overflow: hidden; }
+.dock { border-left: 1px solid var(--line); background: var(--paper); display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
 .dock__tabs { display: flex; border-bottom: 1px solid var(--line); }
 .dock__tab { flex: 1; padding: 11px 8px; background: none; border: 0; border-bottom: 2px solid transparent; cursor: pointer; color: var(--muted); }
 .dock__tab.is-active { color: var(--ink); border-bottom-color: var(--crimson); font-weight: 600; }
@@ -341,12 +366,22 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .filters .field { margin: 0; min-width: 150px; }
 
 /* ---------- drawer + modal ---------- */
-.scrim { position: fixed; inset: 0; background: rgba(16,24,40,.42); opacity: 0; pointer-events: none; transition: opacity .18s; z-index: 40; }
+/*
+ * Layer order for everything that floats above the page. Kept in one place and spaced well
+ * clear of Leaflet's 400-1000 range so a library's internal numbering can never outrank the
+ * application's own panels again.
+ *
+ *   1200  scrim behind the drawer
+ *   1210  drawer itself
+ *   1300  full-size photo viewer
+ *   1400  toasts - always the last word, even over a photo
+ */
+.scrim { position: fixed; inset: 0; background: rgba(16,24,40,.42); opacity: 0; pointer-events: none; transition: opacity .18s; z-index: 1200; }
 .scrim.is-open { opacity: 1; pointer-events: auto; }
 
 .drawer {
-  position: fixed; top: 0; right: 0; bottom: 0; width: 520px; max-width: 94vw;
-  background: #fff; z-index: 50; transform: translateX(100%); transition: transform .22s ease;
+  position: fixed; top: 0; right: 0; bottom: 0; width: 520px; max-width: min(94vw, 560px);
+  background: #fff; z-index: 1210; transform: translateX(100%); transition: transform .22s ease;
   display: flex; flex-direction: column; box-shadow: -12px 0 40px -20px rgba(16,24,40,.5);
 }
 .drawer.is-open { transform: none; }
@@ -367,7 +402,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .tl b { display: block; font-weight: 500; }
 .tl span { font-size: 12px; color: var(--muted); }
 
-.toast-host { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 80; display: flex; flex-direction: column; gap: 8px; }
+.toast-host { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 1400; display: flex; flex-direction: column; gap: 8px; }
 .toast { background: var(--ink); color: #fff; padding: 11px 16px; border-radius: 8px; box-shadow: var(--shadow); }
 .toast--error { background: var(--crimson); }
 .toast--ok { background: var(--jade); }
@@ -398,6 +433,44 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .pin-wrap:has(.pin--green) { color: var(--jade); }
 .pin-wrap:has(.pin--amber) { color: var(--amber); }
 
+/* ---------- the rider on the map ---------- */
+
+/*
+ * A runner who is out on a job is drawn as a bike on the road rather than a dot. The colour
+ * comes through `currentColor`, so the artwork keeps the same meaning the pins always had:
+ * cobalt while working, amber once the phone stops reporting.
+ */
+.rider { position: relative; width: 52px; height: 33px; color: var(--cobalt); }
+.rider--trip { color: var(--cobalt); }
+.rider--lost { color: var(--amber); }
+
+/*
+ * Facing. The art is a side view, so direction is shown by mirroring rather than spinning -
+ * a side-view bike rotated to point north simply looks like it has crashed. The tilt is a
+ * few degrees for the climb or descent, which is enough to read as movement.
+ *
+ * Both transforms live on one property because a second transform would overwrite the first.
+ */
+.rider__art {
+  display: block;
+  transform: rotate(var(--tilt, 0deg));
+  transform-origin: 50% 80%;
+  transition: transform .5s ease-out;
+}
+.rider.is-west .rider__art { transform: scaleX(-1) rotate(calc(-1 * var(--tilt, 0deg))); }
+
+/*
+ * A pulse on the road under the bike, not a bubble around it. Flattened to an ellipse and
+ * pinned to the wheels so it reads as a glow on the tarmac - a circle behind the rider just
+ * looked like a sticker.
+ */
+.rider::before {
+  content: ''; position: absolute; left: 50%; bottom: 1px; width: 40px; height: 14px;
+  margin-left: -20px; border-radius: 50%; background: currentColor; opacity: .22;
+  animation: halo 2.2s ease-out infinite; pointer-events: none; z-index: 0;
+}
+.rider__art { position: relative; z-index: 1; }
+
 /* Moving the marker between two pings should glide, not teleport.
    The class is added after a pin is first placed, so a new marker lands where it belongs
    instead of sliding in from the map origin. Leaflet positions markers with a transform,
@@ -411,7 +484,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 /* Photo viewer. Sits over everything, dims the page, and keeps the caption with the image
    so a meter reading can be compared without leaving the table. */
 .photoview {
-  position: fixed; inset: 0; z-index: 90; display: none;
+  position: fixed; inset: 0; z-index: 1300; display: none;
   align-items: center; justify-content: center; padding: 32px;
   background: rgba(11,18,32,.82); cursor: zoom-out;
 }

@@ -32,10 +32,25 @@ const Live = (function () {
       });
     });
 
+    // Leaflet measures its container once, at creation, and then trusts that measurement
+    // forever. Anything that changes the container afterwards - the page being switched to,
+    // the window resized, the rail collapsing at a breakpoint - leaves it drawing tiles for
+    // a box that no longer exists, which is how the map ends up spilling past its column.
+    // invalidateSize() is the only way to tell it to look again.
+    resize();
+    window.addEventListener('resize', resize);
+    setTimeout(resize, 300);   // after web fonts land and the shell settles
+
     loadPlaces();
     refresh();
     setInterval(refresh, 10000);
     setInterval(paintDock, 1000);   // keeps the running clocks ticking
+  }
+
+  /** Re-measures the map. Safe to call as often as we like; Leaflet no-ops if nothing moved. */
+  function resize() {
+    if (!map) return;
+    try { map.invalidateSize({ animate: false }); } catch (e) { /* map not on screen yet */ }
   }
 
   async function loadPlaces() {
@@ -77,30 +92,119 @@ const Live = (function () {
     return 'pin--grey';
   }
 
-  // A runner on the road is drawn as a scooter; a runner standing free is drawn as a person.
-  // Initials alone made every pin look identical from a distance - at a glance the desk now
-  // sees who is moving and who is waiting without reading anything.
-  const ICON_SCOOTER =
-    '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" ' +
-    'stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">' +
-    '<circle cx="5.5" cy="17.5" r="3"/><circle cx="18.5" cy="17.5" r="3"/>' +
-    '<path d="M5.5 17.5h8l3-9h2"/><path d="M13 8.5h3"/></svg>';
+  /*
+   * A runner who is riding is drawn as an actual rider on the road, not as a dot with a
+   * tiny glyph inside it. That is the whole difference between a board that looks like a
+   * database and one that looks like the city: at a glance the desk sees a bike, which way
+   * it is pointing, and that it is moving.
+   *
+   * Everyone else stays a circular pin. A stationary runner has no direction to show, and a
+   * row of parked bikes on the map would just be noise.
+   *
+   * The artwork is deliberately simple - a dark machine and one coloured rider - because it
+   * renders at about 46 pixels wide. Anything more detailed turns to mush at that size; this
+   * was checked at the real size before it went in.
+   */
+  const RIDER_SVG =
+    '<svg class="rider__art" viewBox="0 0 64 40" width="52" height="33" aria-hidden="true">' +
+      '<ellipse cx="32" cy="36.4" rx="17" ry="1.6" fill="#101828" opacity=".18"/>' +
+      // wheels
+      '<circle cx="15.5" cy="28" r="7.4" fill="#101828"/>' +
+      '<circle cx="15.5" cy="28" r="2.5" fill="#fff"/>' +
+      '<circle cx="48.5" cy="28" r="7.4" fill="#101828"/>' +
+      '<circle cx="48.5" cy="28" r="2.5" fill="#fff"/>' +
+      // frame, tank, engine, pipe
+      '<path d="M15.5 28 L24 21 L38 21 L48.5 28" fill="none" stroke="#101828" ' +
+        'stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '<path d="M29.5 20.5 q4.5 -3.2 9 -1.2 l0 1.7 z" fill="#101828"/>' +
+      '<path d="M22.5 21 h8 l-1.5 -2.6 h-5.4 z" fill="#101828"/>' +
+      '<rect x="26.5" y="23" width="9" height="6" rx="1.6" fill="#101828"/>' +
+      '<rect x="12" y="30.4" width="16" height="2.4" rx="1.2" fill="#101828"/>' +
+      // fork and bar
+      '<path d="M43.5 20.5 L48 14.8" stroke="#101828" stroke-width="2.8" stroke-linecap="round"/>' +
+      '<path d="M45.6 14.2 h6" stroke="#101828" stroke-width="2.8" stroke-linecap="round"/>' +
+      // rider - the jacket takes the duty colour, so the pin still says what it always said
+      '<path d="M28 19.5 L29.5 25 L33.5 28.6" fill="none" stroke="#3A4661" ' +
+        'stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '<path d="M31.8 28.6 h3.6" stroke="#101828" stroke-width="2.6" stroke-linecap="round"/>' +
+      '<path d="M28.2 19.4 q0.8 -5.2 5.8 -7.6 q2.9 -1.4 5.4 -0.6 l-1.5 4.3 ' +
+        'q-2.7 -0.5 -4.5 1.3 q-1.7 1.7 -1.9 3.7 z" fill="currentColor"/>' +
+      '<path d="M38 13.8 L45.6 14.2" fill="none" stroke="currentColor" ' +
+        'stroke-width="2.5" stroke-linecap="round"/>' +
+      '<circle cx="39.8" cy="9" r="4.5" fill="currentColor"/>' +
+      '<path d="M39.8 4.5 a4.5 4.5 0 0 1 3.7 7.1 l-3.7 -2.6 z" fill="#000" opacity=".22"/>' +
+      '<path d="M42.5 7.4 a4.2 4.2 0 0 1 1.4 2.3 l-3.5 0 z" fill="#fff" opacity=".85"/>' +
+    '</svg>';
 
   const ICON_PERSON =
     '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" ' +
     'stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">' +
     '<circle cx="12" cy="7.5" r="3.2"/><path d="M5.5 20.5a6.5 6.5 0 0 1 13 0"/></svg>';
 
+  // A line-drawn bike for the side list, where the avatar is 34px and the full illustration
+  // would be unreadable. The map gets the detailed rider; the list gets the shorthand.
+  const ICON_BIKE =
+    '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" ' +
+    'stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">' +
+    '<circle cx="5.5" cy="17.5" r="3"/><circle cx="18.5" cy="17.5" r="3"/>' +
+    '<path d="M5.5 17.5h8l3-9h2"/><path d="M13 8.5h3"/></svg>';
+
   function pinGlyph(r) {
-    if (r.dutyState === 'ON_TRIP') return ICON_SCOOTER;
     if (r.dutyState === 'OFF_DUTY') return '<span>' + F.initials(r.name) + '</span>';
+    if (r.dutyState === 'ON_TRIP') return ICON_BIKE;
     return ICON_PERSON;
   }
 
-  // A live runner's pin carries a slow halo so the eye finds movement on a busy map.
-  function pinHalo(r) {
-    if (r.signalLost || r.dutyState === 'OFF_DUTY') return '';
-    return '<i class="pin__halo"></i>';
+  /** A riding runner gets the bike; everyone else gets a pin. */
+  function isRiding(r) {
+    return r.dutyState === 'ON_TRIP';
+  }
+
+  /*
+   * Which way the bike faces.
+   *
+   * The artwork is a side view, so it cannot be spun through 360 degrees the way a top-down
+   * arrow can - a bike rotated to point north just looks like it has fallen over. Instead it
+   * is mirrored for westward travel and tilted a few degrees for the climb or descent, which
+   * is enough for the eye to read direction without the drawing ever looking wrong.
+   */
+  const headings = {};
+
+  function updateHeading(id, lat, lng) {
+    const prev = headings[id];
+    if (!prev) {
+      headings[id] = { lat: lat, lng: lng, west: false, tilt: 0 };
+      return headings[id];
+    }
+
+    const dLat = lat - prev.lat;
+    const dLng = lng - prev.lng;
+
+    // Ignore GPS jitter. A parked bike still reports a metre of drift every few seconds,
+    // and without this floor it would spin back and forth on the spot.
+    const JITTER = 0.00012;   // roughly 13 metres
+    if (Math.abs(dLng) > JITTER || Math.abs(dLat) > JITTER) {
+      if (Math.abs(dLng) > JITTER) prev.west = dLng < 0;
+      const slope = Math.abs(dLng) > 1e-9 ? dLat / Math.abs(dLng) : 0;
+      prev.tilt = Math.max(-12, Math.min(12, -slope * 14));
+    }
+    prev.lat = lat;
+    prev.lng = lng;
+    return prev;
+  }
+
+  function riderHtml(r) {
+    const h = updateHeading(r.id, r.lastLocation.lat, r.lastLocation.lng);
+    const flip = h && h.west ? ' is-west' : '';
+    const tilt = h ? h.tilt : 0;
+    return '<div class="rider ' + riderTone(r) + flip + '" style="--tilt:' + tilt.toFixed(1) + 'deg">' +
+           RIDER_SVG + '</div>';
+  }
+
+  // The jacket keeps the same colour language the pins always used.
+  function riderTone(r) {
+    if (r.signalLost) return 'rider--lost';
+    return 'rider--trip';
   }
 
   function paintMarkers() {
@@ -109,9 +213,16 @@ const Live = (function () {
       if (!r.lastLocation || !r.lastLocation.lat) return;
       seen[r.id] = true;
       const pos = [r.lastLocation.lat, r.lastLocation.lng];
-      const html = '<div class="pin-wrap">' + pinHalo(r) +
-                   '<div class="pin ' + pinClass(r) + '">' + pinGlyph(r) + '</div></div>';
-      const icon = L.divIcon({ className: '', html, iconSize: [44, 44], iconAnchor: [22, 40] });
+      // A riding runner is the bike itself, anchored at the road under its wheels. Everyone
+      // else is a pin, anchored at its point. The two need different sizes and anchors, so
+      // the marker is built from whichever shape applies.
+      const riding = isRiding(r);
+      const html = riding
+        ? riderHtml(r)
+        : '<div class="pin-wrap">' + pinHalo(r) + '<div class="pin ' + pinClass(r) + '">' + pinGlyph(r) + '</div></div>';
+      const icon = riding
+        ? L.divIcon({ className: '', html, iconSize: [52, 33], iconAnchor: [26, 30] })
+        : L.divIcon({ className: '', html, iconSize: [44, 44], iconAnchor: [22, 40] });
       const far = r.targetKm !== null && r.targetKm !== undefined
         ? '<br>' + r.targetKm + ' km from ' + F.esc(r.targetName || 'the stop') + ' (~' + r.targetEtaMin + ' min)'
         : '';
@@ -173,6 +284,18 @@ const Live = (function () {
     if (m) {
       m.setLatLng([d.lat, d.lng]);
       if (m._icon) m._icon.classList.add('pin-moving');
+
+      // Turn the bike to face the way it just went. Done here rather than waiting for the
+      // next full refresh, because this push is the only thing that knows a move happened
+      // the instant it happened - which is what makes the board feel live.
+      if (r && isRiding(r)) {
+        const h = updateHeading(d.runnerId, d.lat, d.lng);
+        const art = m._icon && m._icon.querySelector('.rider');
+        if (art) {
+          art.classList.toggle('is-west', !!h.west);
+          art.style.setProperty('--tilt', h.tilt.toFixed(1) + 'deg');
+        }
+      }
     } else {
       // A pin we have not drawn yet - let the next refresh create it properly.
       paintMarkers();
@@ -345,7 +468,11 @@ const Live = (function () {
 
       '<div class="card" style="margin-bottom:14px"><div class="card__body">' +
       '<h3 style="font-size:15px;margin-bottom:6px">' + F.esc(t.case ? t.case.patientName : '') + '</h3>' +
-      '<div style="color:var(--muted)">' + F.esc([t.case && t.case.patientAge, t.case && t.case.patientGender, t.case && t.case.bloodGroup, t.case && t.case.component].filter(Boolean).join(' &middot; ')) + '</div>' +
+      // Same rule as everywhere else: escape the values, not the separator.
+      '<div style="color:var(--muted)">' +
+      [t.case && t.case.patientAge, t.case && t.case.patientGender,
+       t.case && t.case.bloodGroup, t.case && t.case.component]
+        .filter(Boolean).map(F.esc).join(' &middot; ') + '</div>' +
       (t.case && t.case.wardBed ? '<div style="color:var(--muted)">Ward / bed: ' + F.esc(t.case.wardBed) + '</div>' : '') +
       (t.case && t.case.attendantPhone ? '<div style="color:var(--muted)">Attendant: ' + F.esc(t.case.attendantName || '') + ' ' + F.esc(t.case.attendantPhone) + '</div>' : '') +
       '</div></div>' +
@@ -414,5 +541,5 @@ const Live = (function () {
     if (replay) replay.addEventListener('click', () => { UI.closeDrawer(); Main.go('live'); drawRoute(t._id); });
   }
 
-  return { boot, refresh, moveRunner, openTrip, selectTrip, runnersCache: () => runners };
+  return { boot, refresh, resize, moveRunner, openTrip, selectTrip, runnersCache: () => runners };
 })();

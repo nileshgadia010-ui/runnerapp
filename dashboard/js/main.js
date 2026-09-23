@@ -15,6 +15,11 @@ const Main = (function () {
     document.querySelectorAll('.rail__link').forEach(b => b.classList.toggle('is-active', b.dataset.page === page));
     document.querySelectorAll('.page').forEach(p => { p.hidden = p.dataset.page !== page; });
     if (loaders[page]) Promise.resolve(loaders[page]()).catch(e => toast(e.message, 'error'));
+
+    // Coming back to the live board means the map was hidden while the window may have
+    // changed size. Leaflet cannot notice that on its own, so it is told to re-measure the
+    // moment its container is visible again.
+    if (page === 'live' && window.Live && Live.resize) requestAnimationFrame(Live.resize);
     location.hash = page;
   }
 

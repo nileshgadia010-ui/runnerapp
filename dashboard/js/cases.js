@@ -324,7 +324,11 @@ const Cases = (function () {
       '<span class="chip chip--blue">' + F.caseLabel(c.status) + '</span></div>' +
       '<h3 style="font-size:16px">' + F.esc(c.patientName) + '</h3>' +
       '<p style="color:var(--muted);margin-top:2px">' +
-      F.esc([c.patientAge, c.patientGender, c.bloodGroup, c.component, c.unitsRequested + ' unit(s)'].filter(Boolean).join(' &middot; ')) + '</p>' +
+      // Escape each value on its own, then join with the separator. Joining first and
+      // escaping the whole string turns the separator's own & into &amp;, which is why the
+      // drawer was reading "male &middot; B+ &middot; FFP" instead of showing the dots.
+      [c.patientAge, c.patientGender, c.bloodGroup, c.component, c.unitsRequested + ' unit(s)']
+        .filter(Boolean).map(F.esc).join(' &middot; ') + '</p>' +
       '<div class="grid-2" style="margin:12px 0">' +
       '<div><div style="font-size:12px;color:var(--muted)">Hospital</div><b>' + F.esc(c.hospital && c.hospital.name) + '</b><div style="color:var(--muted)">' + F.esc(c.wardBed || '') + '</div></div>' +
       '<div><div style="font-size:12px;color:var(--muted)">Blood centre</div><b>' + F.esc(c.bloodCenter && c.bloodCenter.name) + '</b></div></div>' +
