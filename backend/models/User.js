@@ -85,18 +85,24 @@ userSchema.methods.publicJSON = function () {
 const ROLE_RIGHTS = {
   admin: {
     manageStaff: true, managePlaces: true, createCases: true,
-    assignTrips: true, overrideStages: true, editSettings: true, viewReports: true
+    assignTrips: true, overrideStages: true, editSettings: true, viewReports: true,
+    deleteRecords: true
   },
   // A coordinator runs the desk day to day, and that includes adding a new runner and
-  // writing his shift - waiting for an admin to do it would stall the shift board. An admin
-  // can still take this away from one person through the rights checklist.
+  // writing his shift - waiting for an admin to do it would stall the shift board.
+  //
+  // Deleting is the one thing withheld. Everything else on this list can be undone; a
+  // deleted case and its photos cannot. An admin can hand it to one person through the
+  // rights checklist when they want to.
   coordinator: {
     manageStaff: true, managePlaces: true, createCases: true,
-    assignTrips: true, overrideStages: true, editSettings: true, viewReports: true
+    assignTrips: true, overrideStages: true, editSettings: true, viewReports: true,
+    deleteRecords: false
   },
   runner: {
     manageStaff: false, managePlaces: false, createCases: false,
-    assignTrips: false, overrideStages: false, editSettings: false, viewReports: false
+    assignTrips: false, overrideStages: false, editSettings: false, viewReports: false,
+    deleteRecords: false
   }
 };
 

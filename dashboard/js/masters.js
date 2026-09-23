@@ -80,9 +80,14 @@ const Masters = (function () {
       '<p style="color:var(--muted);font-size:13px">Runners sign in to the IBS Runner app with this user ID and password.</p>';
 
     UI.openDrawer(u ? 'Edit ' + u.name : 'Add staff', body,
+      (u && API.can('deleteRecords')
+        ? '<button class="btn btn--ghost" id="sDelete" style="color:var(--crimson)">Delete</button>' : '') +
       '<button class="btn btn--ghost" onclick="UI.closeDrawer()">Cancel</button><button class="btn btn--red" id="sSave">Save</button>');
 
     wireRoleReset();
+
+    const sDel = document.getElementById('sDelete');
+    if (sDel) sDel.addEventListener('click', () => deleteStaff(u));
 
     document.getElementById('sSave').addEventListener('click', async () => {
       const payload = {
@@ -195,7 +200,12 @@ const Masters = (function () {
       '<p style="color:var(--muted);font-size:13px">Tap the map or paste a Google Maps latitude and longitude. The runner app opens navigation to this exact point.</p>';
 
     UI.openDrawer(p ? 'Edit ' + p.name : 'Add place', body,
+      (p && API.can('deleteRecords')
+        ? '<button class="btn btn--ghost" id="pDelete" style="color:var(--crimson)">Delete</button>' : '') +
       '<button class="btn btn--ghost" onclick="UI.closeDrawer()">Cancel</button><button class="btn btn--red" id="pSave">Save place</button>');
+
+    const pDel = document.getElementById('pDelete');
+    if (pDel) pDel.addEventListener('click', () => deletePlace(p));
 
     setTimeout(() => {
       pickerMap = L.map('pickerMap').setView([lat, lng], p ? 15 : 12);
@@ -245,7 +255,23 @@ const Masters = (function () {
     });
   }
 
-  // The seven things an account can be allowed to do. Only an admin sees or sends these;
+  /*
+   * Same two-step as places. Switching an account off stops the sign-in while every job that
+   * person ever ran still carries their name; deleting erases them, and the server refuses
+   * it once they have any job on record - a report full of jobs run by nobody helps nobody.
+   */
+  function deleteStaff(u) {
+    const hard = window.confirm(
+      'Remove ' + u.name + ' permanently?\n\n' +
+      'OK = delete the account for good (refused if they have any jobs on record)\n' +
+      'Cancel = just switch it off, so their past jobs keep their name');
+
+    API.del('/api/users/' + u.id + (hard ? '?hard=1' : ''))
+      .then(r => { toast(r.message || 'Done', 'ok'); UI.closeDrawer(); loadStaff(); })
+      .catch(e => toast(e.message, 'error'));
+  }
+
+  // The eight things an account can be allowed to do. Only an admin sees or sends these;
   // for anyone else the server ignores the field entirely.
   const RIGHTS = [
     ['manageStaff',    'Add and edit staff accounts'],
@@ -254,14 +280,15 @@ const Masters = (function () {
     ['assignTrips',    'Assign, reassign, re-ping and cancel jobs'],
     ['overrideStages', 'Move a stage on the runner\'s behalf'],
     ['editSettings',   'Crossmatch, close and cancel a case'],
-    ['viewReports',    'Open the reports and export data']
+    ['viewReports',    'Open the reports and export data'],
+    ['deleteRecords',  'Delete cases, jobs, places and staff permanently']
   ];
 
   // What each role normally gets. Mirrors ROLE_RIGHTS on the server; kept here only so a
   // brand new account starts with sensible boxes already ticked instead of all empty.
   const ROLE_DEFAULTS = {
-    admin:       ['manageStaff', 'managePlaces', 'createCases', 'assignTrips', 'overrideStages', 'editSettings', 'viewReports'],
-    coordinator: ['managePlaces', 'createCases', 'assignTrips', 'overrideStages', 'editSettings', 'viewReports'],
+    admin:       ['manageStaff', 'managePlaces', 'createCases', 'assignTrips', 'overrideStages', 'editSettings', 'viewReports', 'deleteRecords'],
+    coordinator: ['manageStaff', 'managePlaces', 'createCases', 'assignTrips', 'overrideStages', 'editSettings', 'viewReports'],
     runner:      []
   };
 
@@ -304,6 +331,25 @@ const Masters = (function () {
     const out = {};
     host.querySelectorAll('[data-right]').forEach(cb => { out[cb.dataset.right] = cb.checked; });
     return out;
+  }
+
+  /*
+   * Two ways to remove a place, and the difference matters.
+   *
+   * Switching it off takes it out of the dropdowns while every past case that used it still
+   * reads correctly - which is what you want for a hospital you have stopped serving.
+   * Deleting erases the record, and the server refuses that while any case still points at
+   * it, because those cases would then show a blank hospital with no explanation.
+   */
+  function deletePlace(p) {
+    const hard = window.confirm(
+      'Delete "' + p.name + '" permanently?\n\n' +
+      'OK = delete the record for good (refused if any case still uses it)\n' +
+      'Cancel = just switch it off, so old cases keep reading correctly');
+
+    API.del('/api/locations/' + p._id + (hard ? '?hard=1' : ''))
+      .then(r => { toast(r.message || 'Done', 'ok'); UI.closeDrawer(); loadPlaces(); })
+      .catch(e => toast(e.message, 'error'));
   }
 
   /* ---------------- attendance ---------------- */

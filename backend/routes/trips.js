@@ -3,8 +3,10 @@ const Trip = require('../models/Trip');
 const User = require('../models/User');
 const LocationPing = require('../models/LocationPing');
 const { auth, allow, can } = require('../middleware/auth');
+const { purgeTrip, describe } = require('../services/purge');
 const { tripTat } = require('../services/tat');
 const { assignTrip, applyStage } = require('../services/dispatch');
+const realtime = require('../services/realtime');
 
 router.use(auth);
 
@@ -93,6 +95,25 @@ router.post('/:id/reping', can('assignTrips'), async (req, res) => {
   trip.alertShownAt = null;
   await trip.save();
   res.json({ ok: true });
+});
+
+/*
+ * Removes one job and its trail. A running job has to be cancelled first - cancelling tells
+ * the runner's phone, deleting would not.
+ */
+router.delete('/:id', can('deleteRecords'), async (req, res, next) => {
+  try {
+    const trip = await Trip.findById(req.params.id);
+    if (!trip) return res.status(404).json({ error: 'Job not found' });
+    if (!['COMPLETED', 'REJECTED', 'CANCELLED'].includes(trip.status)) {
+      return res.status(409).json({ error: 'This job is still running. Cancel it first, then delete.' });
+    }
+    const no = trip.tripNo;
+    const removed = await purgeTrip(trip._id);
+    console.warn('[delete] trip ' + no + ' removed by ' + req.user.username + ' - ' + describe(removed));
+    realtime.emit('trip:update', { tripId: String(req.params.id), status: 'DELETED' });
+    res.json({ ok: true, removed, message: describe(removed) });
+  } catch (e) { next(e); }
 });
 
 module.exports = router;

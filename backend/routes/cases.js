@@ -3,6 +3,7 @@ const Case = require('../models/Case');
 const Trip = require('../models/Trip');
 const { nextNumber } = require('../models/Counter');
 const { auth, allow, can } = require('../middleware/auth');
+const { purgeCase, describe } = require('../services/purge');
 const { caseTat } = require('../services/tat');
 const realtime = require('../services/realtime');
 
@@ -148,6 +149,23 @@ router.post('/:id/cancel', can('editSettings'), async (req, res) => {
   await kase.save();
   realtime.emit('case:update', { caseId: String(kase._id), status: kase.status });
   res.json(kase);
+});
+
+/*
+ * Permanently removes a case and everything that hangs off it - its jobs, their location
+ * trails and their photos. Refused while a runner is still out on it, because a job that
+ * disappears from under someone is worse than one that stays.
+ */
+router.delete('/:id', can('deleteRecords'), async (req, res, next) => {
+  try {
+    const kase = await Case.findById(req.params.id).lean();
+    if (!kase) return res.status(404).json({ error: 'Case not found' });
+
+    const removed = await purgeCase(req.params.id);
+    console.warn('[delete] case ' + kase.caseNo + ' removed by ' + req.user.username + ' - ' + describe(removed));
+    realtime.emit('case:update', { caseId: String(req.params.id), status: 'DELETED' });
+    res.json({ ok: true, removed, message: describe(removed) });
+  } catch (e) { next(e); }
 });
 
 module.exports = router;

@@ -6,7 +6,8 @@ const Attendance = require('../models/Attendance');
 const LocationPing = require('../models/LocationPing');
 const { auth, allow, can } = require('../middleware/auth');
 const { tripTat, caseTat, fmt, SLA } = require('../services/tat');
-const { distanceM } = require('../services/geo');
+const { ISTDate } = require('../services/dispatch');
+const { distanceM, kmFromPings } = require('../services/geo');
 
 // Everyone signed in needs the counter strip - it sits on the live board, which is the one
 // screen every desk person opens. It is a set of counts, not a report, so it is deliberately
@@ -210,5 +211,138 @@ router.get('/attendance', async (req, res) => {
 
 // Numbers for the strip across the top of the control room screen.
 
+
+/*
+ * The route log: every job a runner actually rode, with the path he took.
+ *
+ * The board answers "where is he now". This answers the question that comes afterwards -
+ * which day, which sample, which way did he go, when did he punch in, how far did he ride.
+ * The breadcrumb trail was already being stored for the live map; it is worth far more as a
+ * record than as a moving dot, because it is the only thing that can settle an argument
+ * about a route weeks later.
+ *
+ * Trails are kept for 45 days (the TTL on LocationPing), so a row older than that reports
+ * its times and stages but no path. That is stated in the response rather than left for
+ * someone to puzzle over.
+ */
+router.get('/routes', async (req, res) => {
+  const { fromStr, toStr } = range(req);
+  const from = new Date(fromStr + 'T00:00:00+05:30');
+  const to = new Date(new Date(toStr + 'T00:00:00+05:30').getTime() + 24 * 3600 * 1000);
+
+  const q = { assignedAt: { $gte: from, $lt: to } };
+  if (req.query.runner) q.runner = req.query.runner;
+  if (req.query.status) q.status = { $in: String(req.query.status).split(',') };
+
+  const trips = await Trip.find(q)
+    .populate('case', 'caseNo jobType patientName reference bloodGroup component')
+    .populate('runner', 'name empCode vehicleNo')
+    .populate('pickupLocation dropLocation', 'name area')
+    .sort({ assignedAt: -1 }).limit(500).lean();
+
+  // One query for every trail in the range, rather than one per trip.
+  const ids = trips.map(t => t._id);
+  const pings = await LocationPing.find({ trip: { $in: ids } })
+    .select('trip lat lng at').sort({ at: 1 }).lean();
+
+  const byTrip = {};
+  pings.forEach(p => { (byTrip[String(p.trip)] = byTrip[String(p.trip)] || []).push(p); });
+
+  // Punch-in time for each runner on each day, so the row can show when his shift started.
+  const dates = Array.from(new Set(trips.map(t => ISTDate(new Date(t.assignedAt)))));
+  const runnerIds = Array.from(new Set(trips.map(t => t.runner && String(t.runner._id)).filter(Boolean)));
+  const attendance = await Attendance.find({ runner: { $in: runnerIds }, date: { $in: dates } })
+    .select('runner date sessions startOdo').lean();
+
+  const attKey = {};
+  attendance.forEach(a => { attKey[String(a.runner) + '|' + a.date] = a; });
+
+  const rows = trips.map(t => {
+    const trail = byTrip[String(t._id)] || [];
+    const day = ISTDate(new Date(t.assignedAt));
+    const att = t.runner ? attKey[String(t.runner._id) + '|' + day] : null;
+    const firstIn = att && att.sessions && att.sessions.length ? att.sessions[0].inAt : null;
+    const tat = tripTat(t, new Date());
+
+    return {
+      id: t._id,
+      date: day,
+      tripNo: t.tripNo,
+      type: t.type,
+      status: t.status,
+      caseNo: t.case && t.case.caseNo,
+      jobType: t.case && t.case.jobType,
+      what: t.case ? (t.case.patientName || t.case.reference || t.case.caseNo) : '',
+      bloodGroup: t.case && t.case.bloodGroup,
+      component: t.case && t.case.component,
+
+      runner: t.runner && t.runner.name,
+      runnerId: t.runner && t.runner._id,
+      empCode: t.runner && t.runner.empCode,
+      vehicleNo: t.runner && t.runner.vehicleNo,
+
+      from: t.pickupLocation && t.pickupLocation.name,
+      to: t.dropLocation && t.dropLocation.name,
+
+      punchInAt: firstIn,
+      assignedAt: t.assignedAt,
+      acceptedAt: t.acceptedAt,
+      atPickupAt: t.atPickupAt,
+      pickedAt: t.pickedAt,
+      atDropAt: t.atDropAt,
+      completedAt: t.completedAt,
+
+      // Distance actually ridden on this job, from the trail rather than the straight line.
+      km: kmFromPings(trail),
+      points: trail.length,
+      hasTrail: trail.length > 1,
+
+      minutes: tat.totalMinutes,
+      grade: tat.worst
+    };
+  });
+
+  res.json({
+    from: fromStr, to: toStr,
+    trailKeptDays: 45,
+    rows,
+    totals: {
+      trips: rows.length,
+      km: Math.round(rows.reduce((s, r) => s + r.km, 0) * 10) / 10,
+      withTrail: rows.filter(r => r.hasTrail).length
+    }
+  });
+});
+
+/** The path one job actually took, with the stage markers laid on top of it. */
+router.get('/routes/:id', async (req, res) => {
+  const trip = await Trip.findById(req.params.id)
+    .populate('case', 'caseNo jobType patientName reference bloodGroup component unitsRequested')
+    .populate('runner', 'name empCode phone vehicleNo')
+    .populate('pickupLocation dropLocation', 'name area lat lng geofence')
+    .lean();
+  if (!trip) return res.status(404).json({ error: 'Job not found' });
+
+  const trail = await LocationPing.find({ trip: trip._id })
+    .select('lat lng at speed').sort({ at: 1 }).lean();
+
+  res.json({
+    trip: {
+      id: trip._id, tripNo: trip.tripNo, type: trip.type, status: trip.status,
+      caseNo: trip.case && trip.case.caseNo,
+      what: trip.case ? (trip.case.patientName || trip.case.reference || trip.case.caseNo) : '',
+      runner: trip.runner && trip.runner.name,
+      vehicleNo: trip.runner && trip.runner.vehicleNo,
+      pickup: trip.pickupLocation, drop: trip.dropLocation,
+      assignedAt: trip.assignedAt, acceptedAt: trip.acceptedAt,
+      atPickupAt: trip.atPickupAt, pickedAt: trip.pickedAt,
+      atDropAt: trip.atDropAt, completedAt: trip.completedAt,
+      events: trip.events || []
+    },
+    trail: trail.map(p => ({ lat: p.lat, lng: p.lng, at: p.at, speed: p.speed })),
+    km: kmFromPings(trail),
+    tat: tripTat(trip, new Date())
+  });
+});
 
 module.exports = router;

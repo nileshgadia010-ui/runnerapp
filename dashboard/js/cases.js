@@ -343,12 +343,42 @@ const Cases = (function () {
           (c.crossmatch.bagNumbers ? ' &middot; bags ' + F.esc(c.crossmatch.bagNumbers) : '') + '</p>' : '') +
       '<h4 style="margin:18px 0 8px">Runner legs</h4>' + legs;
 
-    UI.openDrawer('Case ' + c.caseNo, body, actionFor(c).replace('btn--sm', ''));
+    // The delete button only exists for someone who may actually use it - showing a control
+    // that always refuses is worse than not showing it.
+    const del = API.can('deleteRecords')
+      ? '<button class="btn btn--ghost" id="caseDelete" style="color:var(--crimson)">Delete</button>'
+      : '';
+
+    UI.openDrawer('Case ' + c.caseNo, body, del + actionFor(c).replace('btn--sm', ''));
 
     document.querySelectorAll('#drawerBody .job').forEach(el =>
       el.addEventListener('click', () => Live.openTrip(el.dataset.trip)));
     const btn = document.querySelector('#drawerFoot button[data-act]');
     if (btn) btn.addEventListener('click', () => act(btn.dataset.act, btn.dataset.id));
+
+    const delBtn = document.getElementById('caseDelete');
+    if (delBtn) delBtn.addEventListener('click', () => confirmDelete(c));
+  }
+
+  /*
+   * Deleting is the one action here that cannot be undone, so the confirmation names exactly
+   * what will go rather than asking a vague "are you sure". A case takes its jobs, their
+   * location trails and their handover photos with it.
+   */
+  function confirmDelete(c) {
+    const legs = (c.trips || []).length;
+    const detail = legs
+      ? 'This will also delete its ' + legs + ' runner job' + (legs > 1 ? 's' : '') +
+        ', their location trails and any handover photos.'
+      : 'This case has no runner jobs yet.';
+
+    if (!window.confirm(
+        'Delete case ' + c.caseNo + ' for ' + (c.patientName || c.reference || 'this job') + '?\n\n' +
+        detail + '\n\nThis cannot be undone.')) return;
+
+    API.del('/api/cases/' + c._id)
+      .then(r => { toast(r.message || 'Deleted', 'ok'); UI.closeDrawer(); load(); })
+      .catch(e => toast(e.message, 'error'));
   }
 
   return { boot, load, pickRunner, openCase };

@@ -290,12 +290,43 @@ router.put('/:id', can('manageStaff'), async (req, res) => {
   res.json(u.publicJSON());
 });
 
-router.delete('/:id', allow('admin'), async (req, res) => {
+/*
+ * Switching an account off is the normal thing to do when somebody leaves: they can no
+ * longer sign in, and every job they ever ran still shows their name. That stays the default.
+ *
+ * ?hard=1 erases the person entirely, and is refused while any job still points at them -
+ * a report full of jobs run by nobody is worse than a switched-off account.
+ */
+router.delete('/:id', can('manageStaff'), async (req, res) => {
   const u = await User.findById(req.params.id);
   if (!u) return res.status(404).json({ error: 'Staff member not found' });
+  if (String(u._id) === String(req.user._id)) {
+    return res.status(400).json({ error: 'You cannot remove your own account' });
+  }
+
+  if (req.query.hard === '1') {
+    if (!req.user.can('deleteRecords')) {
+      return res.status(403).json({ error: 'You do not have rights to delete permanently. Ask an admin.' });
+    }
+    if (u.role === 'admin' && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Only an admin can remove an admin account' });
+    }
+    const jobs = await Trip.countDocuments({ runner: u._id });
+    if (jobs) {
+      return res.status(409).json({
+        error: u.name + ' has ' + jobs + ' job' + (jobs > 1 ? 's' : '') + ' on record. Switch the account off instead of deleting.'
+      });
+    }
+    await Attendance.deleteMany({ runner: u._id });
+    await LocationPing.deleteMany({ runner: u._id });
+    await User.deleteOne({ _id: u._id });
+    console.warn('[delete] staff ' + u.username + ' removed by ' + req.user.username);
+    return res.json({ ok: true, message: u.name + ' deleted' });
+  }
+
   u.active = false;
   await u.save();
-  res.json({ ok: true });
+  res.json({ ok: true, message: u.name + ' switched off' });
 });
 
 module.exports = router;
