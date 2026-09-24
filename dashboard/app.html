@@ -9,6 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Azeret+Mono:wght@400;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <link rel="stylesheet" href="css/app.css">
+<link rel="stylesheet" href="css/runnerboard.css">
 </head>
 <body>
 <div class="shell">
@@ -21,6 +22,10 @@
       <button class="rail__link is-active" data-page="live">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11z"/><circle cx="12" cy="10" r="2.6"/></svg>
         <span>Live board</span>
+      </button>
+      <button class="rail__link" data-page="runnerboard">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+        <span>Runner Dashboard</span>
       </button>
       <button class="rail__link" data-page="cases">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
@@ -79,6 +84,108 @@
           </div>
           <div class="dock__body" id="dockBody"></div>
         </aside>
+      </div>
+    </section>
+
+    <!-- RUNNER DASHBOARD -->
+    <section class="page" data-page="runnerboard" hidden>
+      <div class="page__head"><h2>Runner Dashboard</h2><div class="spacer"></div></div>
+
+      <div class="rb">
+        <div class="rb__main">
+
+          <!-- who and when -->
+          <div class="rb-who">
+            <div id="rbWhoPic"></div>
+            <div>
+              <div class="rb-who__name" id="rbWhoName">--</div>
+              <div class="rb-who__meta" id="rbWhoMeta"></div>
+            </div>
+            <div class="rb-who__pick">
+              <select id="rbRunner" aria-label="Runner"></select>
+              <input type="date" id="rbDate" aria-label="Date">
+            </div>
+          </div>
+
+          <div id="rbEmpty" class="empty" hidden><b>No runners added yet</b>Add a runner on the Runners screen and his day will show up here.</div>
+
+          <!-- counters -->
+          <div class="rb-stats" id="rbStats"></div>
+
+          <!-- map -->
+          <div class="rb-card" id="rbMapCard">
+            <div class="rb-card__head">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-6.3 7-11a7 7 0 10-14 0c0 4.7 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>
+              <h3>Live Route &amp; Location</h3>
+              <div class="rb-legend">
+                <span class="is-visited"><i></i>Visited</span>
+                <span class="is-live"><i></i>In Progress</span>
+                <span class="is-pending"><i></i>Pending</span>
+              </div>
+              <button class="btn btn--ghost btn--sm" id="rbFull">Full Screen</button>
+            </div>
+            <div style="position:relative">
+              <div class="rb-map" id="rbMap"></div>
+              <div class="rb-here" id="rbHere"></div>
+            </div>
+          </div>
+
+          <!-- timeline -->
+          <div class="rb-card">
+            <div class="rb-card__head">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+              <h3>Connection Timeline</h3>
+              <div class="rb-tabs" id="rbTabs">
+                <button class="rb-tab is-on" data-tab="all">All</button>
+                <button class="rb-tab" data-tab="punch">Punch In/Out</button>
+                <button class="rb-tab" data-tab="visit">Visits</button>
+              </div>
+            </div>
+            <div class="rb-tl__wrap">
+              <table class="rb-tl">
+                <thead><tr>
+                  <th>#</th><th>Time</th><th>Type</th><th>Location</th><th>Photo</th><th>Status</th>
+                </tr></thead>
+                <tbody id="rbTlRows"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- right column -->
+        <div class="rb__side">
+          <div class="rb-card">
+            <div class="rb-card__head">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.5"/><path d="M4.5 20a7.5 7.5 0 0115 0"/></svg>
+              <h3>Runner Summary</h3>
+            </div>
+            <div class="rb-card__body" id="rbSum"></div>
+          </div>
+
+          <div class="rb-card">
+            <div class="rb-card__head">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M8.5 6H14a4 4 0 010 8H10a4 4 0 000 8h5.5"/></svg>
+              <h3>Today&rsquo;s Route</h3>
+            </div>
+            <div class="rb-card__body" id="rbRoute"></div>
+          </div>
+
+          <div class="rb-card">
+            <div class="rb-card__head">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="1.5"/><path d="M8 7h2M14 7h2M8 11h2M14 11h2M8 15h2M14 15h2"/></svg>
+              <h3>Connection Details</h3>
+            </div>
+            <div class="rb-card__body" id="rbConn"></div>
+          </div>
+
+          <div class="rb-card">
+            <div class="rb-card__head">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
+              <h3>Recent Note</h3>
+            </div>
+            <div class="rb-card__body" id="rbNote"></div>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -265,6 +372,7 @@
 <script src="js/routes.js"></script>
 <script src="js/reports.js"></script>
 <script src="js/daysheet.js"></script>
+<script src="js/runnerboard.js"></script>
 <script src="js/main.js"></script>
 </body>
 </html>

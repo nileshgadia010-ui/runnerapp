@@ -90,6 +90,7 @@ app.use('/api/cases', require('./routes/cases'));
 app.use('/api/trips', require('./routes/trips'));
 app.use('/api/runner', require('./routes/runner'));
 app.use('/api/reports', require('./routes/reports'));
+app.use('/api/runner-board', require('./routes/runnerboard'));
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'Unknown endpoint' }));
 

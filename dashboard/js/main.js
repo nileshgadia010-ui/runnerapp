@@ -2,6 +2,7 @@
 const Main = (function () {
   const loaders = {
     live: () => Live.boot(),
+    runnerboard: () => RunnerBoard.boot(),
     cases: () => Cases.boot(),
     trips: () => Reports.bootTrips(),
     runners: () => Masters.bootRunners(),
@@ -22,6 +23,7 @@ const Main = (function () {
     // changed size. Leaflet cannot notice that on its own, so it is told to re-measure the
     // moment its container is visible again.
     if (page === 'live' && window.Live && Live.resize) requestAnimationFrame(Live.resize);
+    if (page === 'runnerboard' && window.RunnerBoard && RunnerBoard.resize) requestAnimationFrame(RunnerBoard.resize);
     location.hash = page;
   }
 
@@ -53,6 +55,7 @@ const Main = (function () {
   // Hide what this person cannot use. The server refuses these calls anyway - this only
   // stops someone being shown a screen that will bounce them, which reads as a broken app.
   const PAGE_RIGHT = {
+    runnerboard: 'viewReports',
     cases: 'createCases',
     trips: 'viewReports',
     runners: 'manageStaff',
