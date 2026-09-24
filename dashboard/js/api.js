@@ -145,7 +145,11 @@ const F = {
     return ({
       NEW: 'Waiting to assign', SAMPLE_TRIP: 'Sample pickup running', SAMPLE_AT_CENTER: 'Sample at centre',
       CROSSMATCH: 'Crossmatch running', READY: 'Units ready', DELIVERY_TRIP: 'Delivery running',
-      DELIVERED: 'Delivered', CLOSED: 'Closed', CANCELLED: 'Cancelled'
+      DELIVERED: 'Delivered',
+      // The single-errand job types have their own two stages. Without these the Stage chip
+      // printed the raw code, which is how a normal in-progress case looked broken.
+      JOB_TRIP: 'Runner on the way', JOB_DONE: 'Job done',
+      CLOSED: 'Closed', CANCELLED: 'Cancelled'
     })[s] || s;
   }
 };

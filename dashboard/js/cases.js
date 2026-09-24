@@ -36,13 +36,52 @@ const Cases = (function () {
     paint();
   }
 
+  // The first leg a case needs, by what kind of job it is.
+  //
+  // A blood case starts by fetching the sample; the other three are single errands that ARE
+  // their own leg. Sending every case out as a sample pickup - which is what this used to do
+  // - made the dispatcher look for a hospital and a blood centre on a case that has neither,
+  // and the assign simply refused.
+  const FIRST_LEG = {
+    BLOOD: 'SAMPLE_PICKUP',
+    COLLECTION_SAMPLE: 'COLLECTION_SAMPLE',
+    PAYMENT_COLLECT: 'PAYMENT_COLLECT',
+    PACKAGE_DELIVER: 'PACKAGE_DELIVER'
+  };
+  const firstLeg = c => FIRST_LEG[c.jobType] || 'SAMPLE_PICKUP';
+
+  const SEND_LABEL = {
+    BLOOD: 'Send for sample',
+    COLLECTION_SAMPLE: 'Send runner',
+    PAYMENT_COLLECT: 'Send to collect',
+    PACKAGE_DELIVER: 'Send with package'
+  };
+
   function actionFor(c) {
-    if (c.status === 'NEW') return '<button class="btn btn--red btn--sm" data-act="assign-sample" data-id="' + c._id + '">Send runner</button>';
+    if (c.status === 'NEW') return '<button class="btn btn--red btn--sm" data-act="assign-first"' +
+      ' data-id="' + c._id + '" data-leg="' + firstLeg(c) + '">' +
+      F.esc(SEND_LABEL[c.jobType] || 'Send runner') + '</button>';
     if (c.status === 'SAMPLE_AT_CENTER') return '<button class="btn btn--blue btn--sm" data-act="xm-start" data-id="' + c._id + '">Start crossmatch</button>';
     if (c.status === 'CROSSMATCH') return '<button class="btn btn--blue btn--sm" data-act="xm-done" data-id="' + c._id + '">Crossmatch result</button>';
     if (c.status === 'READY') return '<button class="btn btn--red btn--sm" data-act="assign-delivery" data-id="' + c._id + '">Send blood</button>';
     if (c.status === 'DELIVERED') return '<button class="btn btn--ghost btn--sm" data-act="close" data-id="' + c._id + '">Close case</button>';
     return '<button class="btn btn--ghost btn--sm" data-act="view" data-id="' + c._id + '">Open</button>';
+  }
+
+  const isBlood = c => !c.jobType || c.jobType === 'BLOOD';
+
+  /**
+   * What goes in the Hospital column.
+   *
+   * A blood case has a hospital. A single errand has a from and a to instead, and rendering
+   * one down the blood columns left the row blank with a stray "- PCV" beside it - which
+   * reads as a broken record rather than as a different kind of job.
+   */
+  function placeOf(c) {
+    if (isBlood(c)) return c.hospital ? c.hospital.name : '';
+    const from = c.fromLocation && c.fromLocation.name;
+    const to = c.toLocation && c.toLocation.name;
+    return [from, to].filter(Boolean).join(' → ');
   }
 
   function paint() {
@@ -53,10 +92,12 @@ const Cases = (function () {
       const p = c.tat.parts;
       return '<tr data-id="' + c._id + '">' +
         '<td><span class="mono">' + F.esc(c.caseNo) + '</span><div style="font-size:11px;color:var(--muted)">' + F.dateTime(c.createdAt) + '</div></td>' +
-        '<td><b>' + F.esc(c.patientName) + '</b> ' + UI.priorityChip(c.priority) + '</td>' +
-        '<td>' + F.esc(c.hospital ? c.hospital.name : '') + '</td>' +
-        '<td>' + F.esc(c.bloodGroup || '-') + ' ' + F.esc(c.component || '') + '</td>' +
-        '<td class="num">' + (c.unitsRequested || 0) + '</td>' +
+        '<td><b>' + F.esc(c.patientName || c.reference || '-') + '</b> ' + UI.priorityChip(c.priority) +
+          (isBlood(c) ? '' : '<div style="font-size:11px;color:var(--muted)">' + F.jobTitle(c.jobType) + '</div>') + '</td>' +
+        '<td>' + F.esc(placeOf(c)) + '</td>' +
+        '<td>' + (isBlood(c) ? F.esc(c.bloodGroup || '-') + ' ' + F.esc(c.component || '')
+          : '<span style="color:var(--muted)">-</span>') + '</td>' +
+        '<td class="num">' + (isBlood(c) ? (c.unitsRequested || 0) : '') + '</td>' +
         '<td><span class="chip ' + (c.status === 'CANCELLED' ? 'chip--red' : ['DELIVERED', 'CLOSED'].includes(c.status) ? 'chip--green' : 'chip--blue') + '">' + F.caseLabel(c.status) + '</span></td>' +
         UI.tatCell(p.samplePickup.value, p.samplePickup.grade) +
         UI.tatCell(p.crossmatch.value, p.crossmatch.grade) +
@@ -67,15 +108,15 @@ const Cases = (function () {
 
     host.querySelectorAll('button[data-act]').forEach(b => b.addEventListener('click', e => {
       e.stopPropagation();
-      act(b.dataset.act, b.dataset.id);
+      act(b.dataset.act, b.dataset.id, b.dataset.leg);
     }));
     host.querySelectorAll('tr').forEach(tr => tr.addEventListener('click', () => openCase(tr.dataset.id)));
     UI.wireDelete(host, load);
   }
 
-  async function act(action, id) {
+  async function act(action, id, leg) {
     try {
-      if (action === 'assign-sample') return pickRunner(rid => assign(id, 'SAMPLE_PICKUP', rid));
+      if (action === 'assign-first') return pickRunner(rid => assign(id, leg || 'SAMPLE_PICKUP', rid));
       if (action === 'assign-delivery') return pickRunner(rid => assign(id, 'BLOOD_DELIVERY', rid));
       if (action === 'xm-start') { await API.post('/api/cases/' + id + '/crossmatch/start'); toast('Crossmatch clock started', 'ok'); return load(); }
       if (action === 'xm-done') return crossmatchForm(id);
@@ -289,7 +330,7 @@ const Cases = (function () {
 
     // The first trip a job needs. A blood case starts by fetching the sample; an errand is
     // the single trip itself.
-    const firstTrip = t => (t === 'BLOOD' ? 'SAMPLE_PICKUP' : t);
+    const firstTrip = t => FIRST_LEG[t] || 'SAMPLE_PICKUP';
 
     const save = async andAssign => {
       const payload = collect();

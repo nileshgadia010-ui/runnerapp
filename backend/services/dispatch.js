@@ -152,7 +152,27 @@ async function assignTrip({ caseId, type, runnerId, assignedBy }) {
   else if (type === 'BLOOD_DELIVERY') { pickup = kase.bloodCenter; drop = kase.hospital; }
   else { pickup = kase.fromLocation; drop = kase.toLocation; }
 
-  if (!pickup || !drop) throw httpError(400, 'This job needs both a pickup and a drop point');
+  if (!pickup || !drop) {
+    // Name the actual gap. The old wording - "this job needs both a pickup and a drop point"
+    // - sent whoever read it hunting round the assign screen for a field to fill, when the
+    // real fault is elsewhere: either a blood leg is being asked of a case that is not a
+    // blood case (so hospital and blood centre were never set on it), or the case really was
+    // saved without one of its places.
+    if (blood && kase.jobType !== 'BLOOD') {
+      throw httpError(400, 'Case ' + kase.caseNo + ' is a ' +
+        (jobTitle(kase.jobType) || 'single errand').toLowerCase() +
+        ' job, not a blood case. Send it as that job instead of a blood leg.');
+    }
+    const missing = blood
+      ? [!pickup && type === 'SAMPLE_PICKUP' ? 'hospital' : null,
+         !drop && type === 'SAMPLE_PICKUP' ? 'blood centre' : null,
+         !pickup && type === 'BLOOD_DELIVERY' ? 'blood centre' : null,
+         !drop && type === 'BLOOD_DELIVERY' ? 'hospital' : null].filter(Boolean)
+      : [!pickup ? 'pickup place' : null, !drop ? 'drop place' : null].filter(Boolean);
+
+    throw httpError(400, 'Case ' + kase.caseNo + ' has no ' + missing.join(' and ') +
+      ' saved on it. Open the case, set it, then send the runner.');
+  }
 
   const now = new Date();
   const trip = await Trip.create({
