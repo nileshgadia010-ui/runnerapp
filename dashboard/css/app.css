@@ -635,3 +635,65 @@ tr:hover .rowdel, .rowdel:focus-visible { opacity: 1; }
 .stop__body::before { content: ''; position: absolute; left: -7px; top: 6px;
   width: 7px; height: 7px; border-radius: 50%; background: var(--crimson);
   box-shadow: 0 0 0 3px var(--paper); }
+
+/* ---------- danger zone ----------
+   Folded away at the bottom of the Runners screen. It is meant to look like something you
+   have to decide to open, not something you scroll past and click. */
+.danger {
+  margin-top: 34px;
+  border: 1px solid var(--crimson-soft);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--paper);
+}
+.danger.is-open { border-color: var(--crimson); }
+
+.danger__toggle {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 13px 16px; border: 0; cursor: pointer;
+  background: var(--crimson-soft); color: var(--crimson);
+  font: inherit; font-size: 13.5px; font-weight: 650; text-align: left;
+}
+.danger__toggle svg { width: 17px; height: 17px; flex: none; }
+.danger__toggle span:nth-of-type(1) { flex: 1; }
+.danger__chev { font-size: 11px; }
+.danger.is-open .danger__chev { transform: rotate(180deg); display: inline-block; }
+
+.danger__body { padding: 18px 16px 20px; }
+.danger__wait { color: var(--muted); font-size: 13px; }
+.danger__lead {
+  font-size: 13px; color: var(--crimson); background: var(--crimson-soft);
+  padding: 11px 13px; border-radius: 9px; margin-bottom: 16px;
+}
+
+.danger__picks { display: grid; gap: 10px; margin-bottom: 18px; }
+.danger__pick {
+  display: flex; gap: 11px; align-items: flex-start;
+  padding: 13px 15px; border: 1px solid var(--line); border-radius: 10px; cursor: pointer;
+}
+.danger__pick:hover { border-color: var(--muted); }
+.danger__pick input { margin-top: 3px; flex: none; }
+.danger__pick b { font-size: 13.5px; }
+.danger__pick p { font-size: 12.5px; color: var(--muted); margin: 3px 0 0; line-height: 1.55; }
+.danger__pick u { color: var(--ink); text-decoration-color: var(--line); }
+.danger__pick small { display: block; font-size: 11.5px; color: var(--muted); margin-top: 5px; font-style: italic; }
+.danger__pick:has(input:checked) { border-color: var(--crimson); background: var(--crimson-soft); }
+.danger__pick--all:has(input:checked) p b { color: var(--crimson); }
+
+.danger__fields { display: grid; grid-template-columns: 180px 1fr; gap: 12px; margin-bottom: 16px; max-width: 620px; }
+.danger__fields .field label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 5px; }
+.danger__fields .field input {
+  width: 100%; padding: 9px 12px; border: 1px solid var(--line);
+  border-radius: 8px; font: inherit; font-size: 13.5px;
+}
+.danger__fields .field input:focus { outline: 2px solid var(--crimson); outline-offset: -1px; border-color: transparent; }
+.danger__hint { font-size: 12px; color: var(--muted); margin-left: 12px; }
+
+.danger__done b { font-size: 15px; }
+.danger__done p { font-size: 13px; color: var(--muted); margin: 7px 0 0; }
+.danger__counts { font-size: 12px !important; font-family: var(--mono, ui-monospace, monospace); }
+.danger__done .btn { margin-top: 14px; }
+
+@media (max-width: 700px) {
+  .danger__fields { grid-template-columns: 1fr; }
+}

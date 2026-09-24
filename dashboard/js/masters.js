@@ -18,6 +18,7 @@ const Masters = (function () {
     }
     await loadStaff();
     await loadPerf();
+    Danger.boot();
   }
 
   async function loadStaff() {

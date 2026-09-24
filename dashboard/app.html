@@ -258,6 +258,16 @@
         <thead><tr><th>Runner</th><th class="num">Days</th><th class="num">Duty hrs</th><th class="num">Trips</th><th class="num">Done</th><th class="num">Declined</th><th class="num">Avg accept</th><th class="num">Avg trip</th><th class="num">On time</th><th class="num">Distance</th></tr></thead>
         <tbody id="perfRows"></tbody>
       </table></div>
+
+      <!-- Factory reset. Folded away and admin-only, because it cannot be undone. -->
+      <div class="danger" id="dangerZone" hidden>
+        <button class="danger__toggle" id="dangerToggle" aria-expanded="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v5M12 17.5v.01"/><path d="M10.3 3.9L1.8 18.4A2 2 0 003.5 21.4h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/></svg>
+          <span>Danger zone &mdash; clear the database</span>
+          <span class="danger__chev">&#9662;</span>
+        </button>
+        <div class="danger__body" id="dangerBody" hidden></div>
+      </div>
     </section>
 
     <!-- PLACES -->
@@ -373,6 +383,7 @@
 <script src="js/reports.js"></script>
 <script src="js/daysheet.js"></script>
 <script src="js/runnerboard.js"></script>
+<script src="js/danger.js"></script>
 <script src="js/main.js"></script>
 </body>
 </html>
