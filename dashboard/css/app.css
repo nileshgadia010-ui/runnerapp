@@ -570,20 +570,25 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 }
 
 /* ---------- row delete ----------
-   Quiet until the row is hovered, so a page of records does not read as a page of bins,
-   but always reachable by keyboard. */
+   Always visible. It was hidden until the row was hovered, which looked tidy and meant
+   nobody could find it: a control you have to discover by accident is the same as a control
+   that is not there. It is quiet - grey until you reach for it - but it is always on screen. */
 .rowdel {
   display: inline-flex; align-items: center; justify-content: center;
   width: 28px; height: 28px; padding: 0;
-  border: 1px solid transparent; border-radius: 7px;
-  background: transparent; color: var(--muted);
-  cursor: pointer; opacity: 0; transition: opacity .15s, color .15s, background .15s, border-color .15s;
+  border: 1px solid var(--line); border-radius: 7px;
+  background: var(--paper); color: var(--muted);
+  cursor: pointer; transition: color .15s, background .15s, border-color .15s;
 }
-tr:hover .rowdel, .rowdel:focus-visible { opacity: 1; }
-.rowdel:hover { color: var(--crimson); background: var(--crimson-soft); border-color: var(--crimson-soft); }
+.rowdel:hover { color: var(--crimson); background: var(--crimson-soft); border-color: var(--crimson); }
 .rowdel:focus-visible { outline: 2px solid var(--crimson); outline-offset: 1px; }
-.rowdel[disabled] { opacity: .4; cursor: wait; }
-@media (hover: none) { .rowdel { opacity: 1; } }
+.rowdel.is-busy { opacity: .4; cursor: wait; }
+
+/* Someone without the right sees it locked rather than missing. Hiding it entirely left
+   the reader wondering whether the software was broken; this says plainly that the button
+   exists and this account may not use it. */
+.rowdel--locked { opacity: .35; cursor: not-allowed; border-style: dashed; }
+.rowdel--locked:hover { color: var(--muted); background: var(--paper); border-color: var(--line); }
 
 /* ---------- big-number tiles above a report ---------- */
 .tiles {
@@ -697,3 +702,21 @@ tr:hover .rowdel, .rowdel:focus-visible { opacity: 1; }
 @media (max-width: 700px) {
   .danger__fields { grid-template-columns: 1fr; }
 }
+
+/* ---------- the action column stays on screen ----------
+   These tables carry a dozen columns and run wider than the window, so the last column -
+   the one with Open, Edit and the delete bin - slid off the right edge and had to be
+   scrolled to. A control you have to go looking for is the same as one that is not there,
+   which is exactly how the delete button came to be reported missing. Pinning it to the
+   right keeps it where the eye expects it, whatever the table does. */
+.table-wrap td.rowacts,
+.table-wrap thead th:last-child {
+  position: sticky;
+  right: 0;
+  background: var(--paper);
+  box-shadow: -8px 0 10px -8px rgba(16, 24, 40, .16);
+  z-index: 2;
+}
+.table-wrap thead th:last-child { background: #FAFBFC; z-index: 3; }
+/* The row highlight has to reach the pinned cell too, or it floats over its own row. */
+.table-wrap tbody tr:hover td.rowacts { background: #FAFBFC; }

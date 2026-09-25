@@ -119,9 +119,25 @@ const UI = (function () {
     attendance: 'The punch in and punch out record for this day will go. Jobs are not touched.'
   };
 
-  /** The little crimson bin that sits in the last column of a row. */
+  /**
+   * The bin that sits in the last column of a row.
+   *
+   * Someone without the delete right sees it locked, not missing. Rendering nothing at all
+   * was worse than useless: the reader could not tell a rights problem from a broken page,
+   * and the only way to find out was to ask. A dimmed button with a reason on it answers
+   * the question on sight.
+   */
   function delBtn(kind, id, label) {
-    if (!API.can('deleteRecords')) return '';
+    const may = API.can('deleteRecords');
+    if (!may) {
+      return '<button class="rowdel rowdel--locked" disabled' +
+        ' title="This account does not have the delete right. Ask an admin."' +
+        ' aria-label="Delete ' + F.esc(label || '') + ' - not allowed">' +
+        '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">' +
+        '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" fill="none" ' +
+        'stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>' +
+        '</svg></button>';
+    }
     return '<button class="rowdel" title="Delete" aria-label="Delete ' + F.esc(label || '') + '"' +
       ' data-del="' + kind + '" data-del-id="' + id + '" data-del-label="' + F.esc(label || '') + '">' +
       '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">' +
@@ -155,6 +171,7 @@ const UI = (function () {
       if (!ok) return;
 
       btn.disabled = true;
+      btn.classList.add('is-busy');
       API.del(ENDPOINT[kind] + btn.dataset.delId)
         .then(r => {
           toast((r && r.message) || 'Deleted', 'ok');
@@ -162,7 +179,11 @@ const UI = (function () {
           if (row) row.remove();
           if (typeof reload === 'function') reload();
         })
-        .catch(err => { btn.disabled = false; toast(err.message, 'bad'); });
+        .catch(err => {
+          btn.disabled = false;
+          btn.classList.remove('is-busy');
+          toast(err.message, 'bad');
+        });
     }, true);
   }
 
