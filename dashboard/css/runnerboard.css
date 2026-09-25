@@ -282,3 +282,10 @@
 .rb-stat--sample .rb-stat__icon { background: var(--rb-live-soft); color: var(--rb-live); }
 .rb-stat--parcel .rb-stat__icon { background: var(--rb-pending-soft); color: var(--rb-pending); }
 #rbHaul { margin-top: -2px; }
+
+/* "He pressed reached, but he was two kilometres away." Only ever drawn when that is true,
+   so the row stays quiet on an ordinary visit and this line means something when it appears. */
+.rb-tl__away {
+  font-size: 11px; font-weight: 600; color: var(--rb-pending);
+  margin-top: 2px;
+}

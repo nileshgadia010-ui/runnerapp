@@ -41,7 +41,7 @@ router.get('/:id', async (req, res) => {
 
 // Breadcrumb trail for the map - live trips replay the whole route.
 router.get('/:id/route', async (req, res) => {
-  const pings = await LocationPing.find({ trip: req.params.id }).sort({ at: 1 }).select('lat lng at speed').lean();
+  const pings = await LocationPing.find({ trip: req.params.id }).sort({ at: 1 }).select('lat lng at speed accuracy mock').lean();
   res.json(pings);
 });
 

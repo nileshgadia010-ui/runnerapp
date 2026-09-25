@@ -305,6 +305,7 @@ const RunnerBoard = (function () {
       '<td class="rb-tl__place"><b>' + F.esc(r.place || 'Location not recorded') + '</b>' +
       (typeof r.lat === 'number'
         ? '<div class="rb-tl__gps">Lat: ' + r.lat.toFixed(4) + ', Lng: ' + r.lng.toFixed(4) + '</div>' : '') +
+      away(r) +
       '</td>' +
       '<td>' + (r.photo
         ? '<img class="rb-tl__shot" src="/uploads/' + F.esc(r.photo) + '" alt="photo" loading="lazy" ' +
@@ -315,6 +316,22 @@ const RunnerBoard = (function () {
 
     host.querySelectorAll('[data-shot]').forEach(img =>
       img.addEventListener('click', () => UI.photo('/uploads/' + img.dataset.shot, img.dataset.cap)));
+  }
+
+  /**
+   * How far from the place he was standing when he pressed "I have reached".
+   *
+   * Silent when he was at the counter, because that is the normal case and a line saying so
+   * on every row is noise. It only speaks up when the press came from somewhere else - which
+   * is the whole reason the figure is worth showing.
+   */
+  function away(r) {
+    if (r.type !== 'VISIT' || typeof r.awayM !== 'number') return '';
+    if (r.awayM <= 250) return '';
+    const txt = r.awayM >= 1000
+      ? (Math.round(r.awayM / 100) / 10) + ' km from the place'
+      : r.awayM + ' m from the place';
+    return '<div class="rb-tl__away">' + F.esc(txt) + ' when he pressed</div>';
   }
 
   function typePill(r) {

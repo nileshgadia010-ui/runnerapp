@@ -110,7 +110,7 @@ router.get('/:id/where', async (req, res) => {
   // Distance covered today, from the breadcrumb trail.
   const dayStart = new Date(date + 'T00:00:00+05:30');
   const pings = await LocationPing.find({ runner: runner._id, at: { $gte: dayStart } })
-    .select('lat lng at').sort({ at: 1 }).lean();
+    .select('lat lng at accuracy mock').sort({ at: 1 }).lean();
 
   const loc = runner.lastLocation || {};
   const stale = Date.now() - 3 * 60 * 1000;

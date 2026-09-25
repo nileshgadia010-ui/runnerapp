@@ -19,7 +19,7 @@ const Attendance = require('../models/Attendance');
 const LocationPing = require('../models/LocationPing');
 const Photo = require('../models/Photo');
 const { auth, can } = require('../middleware/auth');
-const { kmFromPings, distanceM } = require('../services/geo');
+const { kmFromPings, cleanTrail, distanceM } = require('../services/geo');
 const { labelFor } = require('../services/dispatch');
 const { tripTat } = require('../services/tat');
 
@@ -110,7 +110,7 @@ router.get('/:runnerId', async (req, res, next) => {
         .sort({ assignedAt: 1 }).lean(),
       Attendance.findOne({ runner: runner._id, date }).lean(),
       LocationPing.find({ runner: runner._id, at: { $gte: from, $lt: to } })
-        .select('lat lng at speed').sort({ at: 1 }).lean(),
+        .select('lat lng at speed accuracy mock').sort({ at: 1 }).lean(),
       Photo.find({ runner: runner._id, at: { $gte: from, $lt: to } })
         .select('kind trip at lat lng').sort({ at: 1 }).lean()
     ]);
@@ -198,8 +198,12 @@ router.get('/:runnerId', async (req, res, next) => {
 
       // The line drawn on the map. Thinned, because a full day is thousands of points and
       // the shape of the route survives dropping most of them.
-      trail: thin(pings).map(p => [p.lat, p.lng]),
+      // The drawn route and the kilometre count come from the same cleaned list, so the map
+      // can never show a journey the number disagrees with. A runner who has not moved gets
+      // a single point and therefore no line at all - which is the honest picture.
+      trail: thin(cleanTrail(pings)).map(p => [p.lat, p.lng]),
       trailPoints: pings.length,
+      movedPoints: cleanTrail(pings).length,
 
       stops,
       timeline: buildTimeline(sessions, trips, stops, att, photoByTrip),
@@ -339,7 +343,12 @@ function buildTimeline(sessions, trips, stops, att, photoByTrip) {
       status: s.leftAt ? 'COMPLETED' : 'IN_PROGRESS',
       label: 'Connection Visit',
       stopN: s.n, tripNo: s.tripNo, did: s.did, what: s.what,
-      minutes: s.minutes
+      minutes: s.minutes,
+
+      // How far from the place he actually was when he pressed "I have reached".
+      // The dispatcher has always measured this; nothing ever showed it. It is the one
+      // number that can tell the office a visit was claimed from somewhere else.
+      awayM: ev && typeof ev.distanceToTargetM === 'number' ? ev.distanceToTargetM : null
     });
   });
 
@@ -405,7 +414,7 @@ function thin(pings, maxPoints = 600) {
   for (let i = 1; i < pings.length - 1; i++) {
     const prev = kept[kept.length - 1];
     const d = distanceM(prev.lat, prev.lng, pings[i].lat, pings[i].lng);
-    if (d !== null && d >= 25) kept.push(pings[i]);
+    if (d !== null && d >= 60) kept.push(pings[i]);
   }
   kept.push(pings[pings.length - 1]);
   if (kept.length <= maxPoints) return kept;

@@ -72,7 +72,7 @@ async function daySheets({ from, to, runnerId }) {
   const pings = await LocationPing.find({
     runner: { $in: ids },
     at: { $gte: istDayStart(from), $lt: istDayEnd(to) }
-  }).select('runner lat lng at').sort({ at: 1 }).lean();
+  }).select('runner lat lng at accuracy mock').sort({ at: 1 }).lean();
 
   // Bucket everything by runner and day once, rather than filtering inside a loop.
   const key = (r, d) => String(r) + '|' + d;

@@ -225,13 +225,12 @@ router.get('/runners', async (req, res) => {
     const mine = trips.filter(t => String(t.runner) === String(r._id));
     const done = mine.filter(t => t.status === 'COMPLETED').map(t => tripTat(t));
     const myAtt = att.filter(a => String(a.runner) === String(r._id));
-    const pings = await LocationPing.find({ runner: r._id, at: { $gte: from, $lte: to } }).sort({ at: 1 }).select('lat lng').lean();
-
-    let km = 0;
-    for (let i = 1; i < pings.length; i++) {
-      const d = distanceM(pings[i - 1].lat, pings[i - 1].lng, pings[i].lat, pings[i].lng) || 0;
-      if (d > 20 && d < 5000) km += d / 1000;
-    }
+    // One calculation for the whole system. This used to keep its own rule - anything over
+    // 20 m counts - which both disagreed with every other screen and still let a parked
+    // phone's jitter through.
+    const pings = await LocationPing.find({ runner: r._id, at: { $gte: from, $lte: to } })
+      .sort({ at: 1 }).select('lat lng at accuracy mock').lean();
+    const km = kmFromPings(pings);
 
     rows.push({
       runner: r.name, empCode: r.empCode, vehicleNo: r.vehicleNo,
@@ -243,7 +242,7 @@ router.get('/runners', async (req, res) => {
       avgAccept: avg(done.map(t => t.parts.accept.value).filter(v => v !== null)),
       avgTrip: avg(done.map(t => t.totalMinutes).filter(v => v !== null)),
       onTimePercent: done.length ? Math.round((done.filter(t => t.worst !== 'breach').length / done.length) * 100) : null,
-      distanceKm: Math.round(km * 10) / 10
+      distanceKm: km
     });
   }
   res.json({ rows });
@@ -337,7 +336,7 @@ async function routeRows(req) {
   // One query for every trail in the range, rather than one per trip.
   const ids = trips.map(t => t._id);
   const pings = await LocationPing.find({ trip: { $in: ids } })
-    .select('trip lat lng at').sort({ at: 1 }).lean();
+    .select('trip lat lng at accuracy mock').sort({ at: 1 }).lean();
 
   const byTrip = {};
   pings.forEach(p => { (byTrip[String(p.trip)] = byTrip[String(p.trip)] || []).push(p); });
@@ -422,7 +421,7 @@ router.get('/routes/:id', async (req, res) => {
   if (!trip) return res.status(404).json({ error: 'Job not found' });
 
   const trail = await LocationPing.find({ trip: trip._id })
-    .select('lat lng at speed').sort({ at: 1 }).lean();
+    .select('lat lng at speed accuracy mock').sort({ at: 1 }).lean();
 
   res.json({
     trip: {

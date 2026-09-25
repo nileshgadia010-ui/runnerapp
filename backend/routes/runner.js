@@ -239,7 +239,7 @@ async function kmToday(runnerId, date) {
   const pings = await LocationPing.find({
     runner: runnerId,
     at: { $gte: istDayStart(date), $lt: istDayEnd(date) }
-  }).select('lat lng at').sort({ at: 1 }).lean();
+  }).select('lat lng at accuracy mock').sort({ at: 1 }).lean();
   return kmFromPings(pings);
 }
 
@@ -366,7 +366,7 @@ router.get('/summary', async (req, res) => {
 
   const from = istDayStart(dates[dates.length - 1]);
   const pings = await LocationPing.find({ runner: req.user._id, at: { $gte: from } })
-    .select('lat lng at').sort({ at: 1 }).lean();
+    .select('lat lng at accuracy mock').sort({ at: 1 }).lean();
 
   const bucket = {};
   pings.forEach(p => {
