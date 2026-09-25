@@ -60,7 +60,7 @@ public class HomeActivity extends BaseActivity {
     private TextView hello, empLine, dutyChip, dutyTimer, dutyCaption, tripsToday, kmToday, hoursWeek,
             jobTitle, jobSub, jobStage, jobTimer, jobDistance, freeNote, offlineBanner, warnBanner, tripEmpty;
     private Button punchBtn, breakBtn, openJobBtn;
-    private LinearLayout jobCard, tripList;
+    private LinearLayout jobCard, tripList, queueCard, queueList;
 
     private JSONObject state = new JSONObject();
     private String activeTripId = null;
@@ -140,6 +140,8 @@ public class HomeActivity extends BaseActivity {
         kmToday = findViewById(R.id.kmToday);
         hoursWeek = findViewById(R.id.hoursWeek);
         jobCard = findViewById(R.id.jobCard);
+        queueCard = findViewById(R.id.queueCard);
+        queueList = findViewById(R.id.queueList);
         jobTitle = findViewById(R.id.jobTitle);
         jobSub = findViewById(R.id.jobSub);
         jobStage = findViewById(R.id.jobStage);
@@ -284,7 +286,9 @@ public class HomeActivity extends BaseActivity {
                 jobStage.setText(trip.optString("statusLabel", "").toUpperCase() + "  •  " +
                         getString(queued == 1 ? R.string.more_waiting : R.string.more_waiting_many, queued));
             }
+            paintQueue(data.optJSONArray("queue"));
         } else {
+            paintQueue(null);
             activeTripId = null;
             jobAnchorAt = null;
             Anim.show(jobCard, false);
@@ -570,6 +574,65 @@ public class HomeActivity extends BaseActivity {
                 ui.post(poll);
             });
         } catch (Exception ignored) { }
+    }
+
+    /**
+     * The jobs waiting behind the live one, each with a button that says "do this one".
+     *
+     * The desk hands work out in the order it comes in; the roads do not care about that
+     * order. A runner who can see both places can pick the one that is on his way, and the
+     * leg he saves is a real one.
+     */
+    private void paintQueue(org.json.JSONArray queue) {
+        queueList.removeAllViews();
+
+        int shown = 0;
+        if (queue != null) {
+            LayoutInflater inf = LayoutInflater.from(this);
+            for (int i = 0; i < queue.length(); i++) {
+                final JSONObject q = queue.optJSONObject(i);
+                if (q == null || q.optBoolean("isCurrent", false)) continue;
+
+                View row = inf.inflate(R.layout.item_queued, queueList, false);
+                TextView title = row.findViewById(R.id.qTitle);
+                TextView where = row.findViewById(R.id.qWhere);
+                TextView state = row.findViewById(R.id.qState);
+                Button go = row.findViewById(R.id.qGo);
+
+                String who = q.optString("patientName", "");
+                title.setText(q.optString("headline", "") + (who.isEmpty() ? "" : "  •  " + who));
+
+                JSONObject target = q.optJSONObject("target");
+                where.setText(target != null ? target.optString("name", "") : "");
+
+                state.setText(getString(q.optBoolean("waiting", false)
+                        ? R.string.queue_waiting : R.string.queue_accepted));
+
+                final String id = q.optString("id");
+                go.setOnClickListener(v -> switchTo(id));
+                row.setOnClickListener(v -> {
+                    Intent open = new Intent(this, TripActivity.class);
+                    open.putExtra("tripId", id);
+                    startActivity(open);
+                });
+
+                queueList.addView(row);
+                shown++;
+            }
+        }
+        Anim.show(queueCard, shown > 0);
+    }
+
+    /** Asks the server to make this the live job, and says plainly when it will not. */
+    private void switchTo(String tripId) {
+        api.post("/api/runner/trip/" + tripId + "/focus", new JSONObject(), (ok, data, err) -> {
+            if (!ok) {
+                Toast.makeText(this, Api.text(err), Toast.LENGTH_LONG).show();
+                return;
+            }
+            Toast.makeText(this, R.string.queue_switched, Toast.LENGTH_SHORT).show();
+            ui.post(poll);
+        });
     }
 
     private void openTrip() {

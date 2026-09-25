@@ -223,4 +223,13 @@
     <string name="near_target">You are at %1$s</string>
     <string name="skip">Skip</string>
     <string name="step_of">Step %1$d of 3</string>
+    <string name="photo_at_place">A photo is needed here</string>
+    <string name="arrival_photo_saved">Photo saved. It will upload when there is signal.</string>
+    <string name="photo_waiting">%1$d photo waiting to upload</string>
+    <string name="queue_head">ALSO WAITING FOR YOU</string>
+    <string name="queue_do_this">Do this one</string>
+    <string name="queue_waiting">Waiting for you to accept</string>
+    <string name="queue_accepted">Accepted</string>
+    <string name="queue_switched">Switched. This one is now your live job.</string>
+    <string name="queue_cannot_switch">Finish what you are carrying first.</string>
 </resources>

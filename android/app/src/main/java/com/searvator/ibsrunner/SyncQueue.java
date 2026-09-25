@@ -18,9 +18,10 @@ import org.json.JSONObject;
  *   - each entry carries the time the runner actually pressed the button, so a stage that
  *     was pressed in a basement at 3:04 and uploaded at 3:31 is still recorded as 3:04.
  *
- * Actions that carry a photo (the delivery proof, the odometer shot) are not put in this
- * JSON queue. They are held as a pending upload with the file path and retried until the
- * upload succeeds, because the photo itself has to travel as multipart.
+ * Actions that carry a photo (the arrival shot, the delivery proof) cannot ride in this JSON
+ * queue, because the picture itself has to travel as multipart. They go into a second queue
+ * alongside it which keeps the file path on the phone and retries the upload until it lands -
+ * so a compulsory photo never stops a runner who is standing in a basement with no signal.
  */
 public class SyncQueue {
 
@@ -117,6 +118,61 @@ public class SyncQueue {
     }
 
     public synchronized void clear() { prefs.setActionQueue("[]"); }
+
+    /* ------------------------------------------------------------------ *
+     * Photo queue
+     *
+     * Same idea as above, but the entry points at a JPEG sitting in the app's own folder.
+     * The screen moves the moment the shutter closes; the upload happens whenever there is
+     * a network, which may be an hour later in a hospital basement.
+     * ------------------------------------------------------------------ */
+
+    public synchronized String addPhotoStage(String tripId, String stage, java.util.Map<String, String> fields,
+                                             String filePath) {
+        try {
+            JSONObject o = new JSONObject();
+            o.put("id", newId());
+            o.put("tripId", tripId);
+            o.put("stage", stage);
+            o.put("file", filePath);
+            JSONObject f = new JSONObject();
+            for (java.util.Map.Entry<String, String> e : fields.entrySet()) f.put(e.getKey(), e.getValue());
+            o.put("fields", f);
+            o.put("at", Clock.nowIso());
+
+            JSONArray arr = readPhotos();
+            arr.put(o);
+            while (arr.length() > 60) arr.remove(0);
+            prefs.setPhotoQueue(arr.toString());
+            return o.getString("id");
+        } catch (Exception e) { return null; }
+    }
+
+    public synchronized JSONArray readPhotos() {
+        try { return new JSONArray(prefs.photoQueue()); }
+        catch (Exception e) { return new JSONArray(); }
+    }
+
+    public synchronized int photoCount() { return readPhotos().length(); }
+
+    /** Drops one entry and deletes the picture it was holding on to. */
+    public synchronized void removePhoto(String id, boolean deleteFile) {
+        try {
+            JSONArray keep = new JSONArray();
+            JSONArray current = readPhotos();
+            for (int i = 0; i < current.length(); i++) {
+                JSONObject item = current.getJSONObject(i);
+                if (id.equals(item.optString("id"))) {
+                    if (deleteFile) {
+                        try { new java.io.File(item.optString("file")).delete(); } catch (Exception ignored) { }
+                    }
+                    continue;
+                }
+                keep.put(item);
+            }
+            prefs.setPhotoQueue(keep.toString());
+        } catch (Exception ignored) { }
+    }
 
     private static String newId() {
         return Long.toString(System.currentTimeMillis(), 36) + "-" + (int) (Math.random() * 100000);

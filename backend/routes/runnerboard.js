@@ -144,6 +144,30 @@ router.get('/:runnerId', async (req, res, next) => {
         weekOff: runner.weekOff || ''
       },
 
+      // What he actually brought back or handed over. Places visited answers "did he go";
+      // these answer "and what came of it" - the money collected, the units delivered, the
+      // parcels dropped. The office reconciles the cash against this the same evening.
+      collected: (() => {
+        const done = trips.filter(t => t.status === 'COMPLETED');
+        const money = done.filter(t => t.type === 'PAYMENT_COLLECT');
+        const units = done.filter(t => t.type === 'BLOOD_DELIVERY');
+        const parcels = done.filter(t => t.type === 'PACKAGE_DELIVER');
+        const samples = done.filter(t => ['SAMPLE_PICKUP', 'COLLECTION_SAMPLE'].includes(t.type));
+        return {
+          amount: Math.round(money.reduce((n, t) => n + (t.amountCollected || 0), 0)),
+          payments: money.length,
+          modes: money.reduce((m, t) => {
+            const k = t.paymentMode || 'CASH';
+            m[k] = (m[k] || 0) + (t.amountCollected || 0);
+            return m;
+          }, {}),
+          units: units.reduce((n, t) => n + (t.unitsCarried || 0), 0),
+          deliveries: units.length,
+          parcels: parcels.length,
+          samples: samples.length
+        };
+      })(),
+
       counters: {
         total: stops.length,
         completed: stops.filter(s => s.status === 'VISITED').length,

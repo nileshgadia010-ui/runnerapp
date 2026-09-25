@@ -372,12 +372,15 @@ public class TripActivity extends BaseActivity {
             case "ASSIGNED":
                 return new String[]{"ACCEPTED", getString(R.string.btn_accept_job)};
 
-            // 1 of 3 - reached the pickup. EN_ROUTE_PICKUP is filled in behind him.
+            // 2 of 3 - reached the place, with the camera. One press says both "I am here"
+            // and "I have it in my hand", so the separate "leaving now" button is gone.
             case "ACCEPTED":
             case "EN_ROUTE_PICKUP":
                 return new String[]{"AT_PICKUP", reachedLabel(true)};
 
-            // 2 of 3 - has it in hand and is moving. EN_ROUTE_DROP is filled in behind him.
+
+            // Only reached by a job started on an older build, which stopped at AT_PICKUP
+            // before those two were joined. Let him finish it the way it began.
             case "AT_PICKUP":
                 if (payment) return new String[]{"PICKED", getString(R.string.btn_money_going)};
                 if (parcel) return new String[]{"PICKED", getString(R.string.btn_parcel_going)};
@@ -418,12 +421,17 @@ public class TripActivity extends BaseActivity {
         return out[0] <= radius;
     }
 
-    /** Which step of three he is on, for the small line above the button. */
+    /**
+     * Which step of three he is on, for the small line above the button.
+     *
+     * Accepting is step one, reaching the place is step two, handing over is step three -
+     * which is now exactly three presses, with nothing in between.
+     */
     private int stepNumber(String status) {
         switch (status) {
-            case "ACCEPTED": case "EN_ROUTE_PICKUP": return 1;
-            case "AT_PICKUP": return 2;
-            case "PICKED": case "EN_ROUTE_DROP": case "AT_DROP": return 3;
+            case "ASSIGNED": return 1;
+            case "ACCEPTED": case "EN_ROUTE_PICKUP": return 2;
+            case "AT_PICKUP": case "PICKED": case "EN_ROUTE_DROP": case "AT_DROP": return 3;
             default: return 0;
         }
     }
@@ -440,12 +448,26 @@ public class TripActivity extends BaseActivity {
     }
 
     /**
-     * A photo is the proof for the two jobs where something physical changes hands and
-     * somebody might later dispute it: blood units at a bedside, and a parcel. A sample
-     * going back to our own centre and cash handed to our own office do not need one.
+     * A photo at the handover, for the two jobs where something physical changes hands and
+     * somebody might later dispute it: blood units at a bedside, and a parcel. A sample going
+     * back to our own centre and cash handed to our own office do not need a second one.
+     *
+     * This is separate from the arrival photo below, which every job now takes.
      */
     private boolean needsProof(String type) {
         return "BLOOD_DELIVERY".equals(type) || "PACKAGE_DELIVER".equals(type);
+    }
+
+    /**
+     * The arrival shot, and it is not optional for anybody.
+     *
+     * "I reached Trimurti Hospital at 10:40" is the single claim the whole TAT report rests
+     * on, and until now nothing backed it up. A picture taken at the counter does - it has a
+     * time, it has the phone's own position stamped beside it, and it is something a
+     * coordinator can open six weeks later when a hospital says nobody came.
+     */
+    private boolean arrivalPhoto(String stage) {
+        return "AT_PICKUP".equals(stage);
     }
 
     private void advance() {
@@ -454,11 +476,19 @@ public class TripActivity extends BaseActivity {
         if (next == null) return;
         String stage = next[0];
 
+        // Arriving: camera first. What he is carrying is asked afterwards, on the way back
+        // from the camera, so he is never standing at a counter answering a dialog with the
+        // phone already raised.
+        if (arrivalPhoto(stage)) { photoStage = stage; takePhoto(); return; }
+
         if ("PICKED".equals(stage)) { askExtra(type); return; }
-        if ("COMPLETED".equals(stage) && needsProof(type)) { takePhoto(); return; }
+        if ("COMPLETED".equals(stage) && needsProof(type)) { photoStage = stage; takePhoto(); return; }
 
         send(stage, null, null, null);
     }
+
+    /** Which stage the camera was opened for, so the result knows what to do with itself. */
+    private String photoStage = null;
 
     /**
      * What to capture when the runner says he has the thing in his hand.
@@ -536,11 +566,12 @@ public class TripActivity extends BaseActivity {
                 .setTitle(R.string.amount_title)
                 .setView(box)
                 .setSingleChoiceItems(labels, 0, (d, which) -> picked[0] = which)
+                .setCancelable(false)
                 .setPositiveButton(R.string.save, (d, w) -> {
                     String v = amount.getText().toString().trim();
                     sendPayment(v, modes[picked[0]]);
                 })
-                .setNegativeButton(R.string.cancel, null)
+                .setNegativeButton(R.string.cancel, (d, w) -> sendPayment("", modes[0]))
                 .show();
     }
 
@@ -575,7 +606,100 @@ public class TripActivity extends BaseActivity {
             return;
         }
         Photos.shrink(photoFile);
-        send("COMPLETED", null, null, photoFile);
+
+        final String stage = photoStage == null ? "COMPLETED" : photoStage;
+        photoStage = null;
+
+        // The handover photo ends the job, so it still blocks the screen until it lands.
+        if (!"AT_PICKUP".equals(stage)) { send(stage, null, null, photoFile); return; }
+
+        // The arrival photo does not. Ask what he is carrying, then move the screen on and
+        // let the picture upload behind him - a runner in a hospital basement must not be
+        // held at a spinner because the building has no signal.
+        askExtraThenArrive(trip.optString("type"));
+    }
+
+    /**
+     * The arrival press, once the picture is taken.
+     *
+     * Whatever the job needs counting - how much cash, how many units - is asked here, and
+     * then a single request carries the photo, the count and both stages together.
+     */
+    private void askExtraThenArrive(String type) {
+        if ("PAYMENT_COLLECT".equals(type)) {
+            askPayment();
+            return;
+        }
+        if ("BLOOD_DELIVERY".equals(type)) {
+            final EditText input = new EditText(this);
+            input.setHint(R.string.units_hint);
+            input.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+            new AlertDialog.Builder(this)
+                    .setTitle(R.string.units_collected_title)
+                    .setView(input)
+                    .setCancelable(false)
+                    .setPositiveButton(R.string.save, (d, w) ->
+                            arrive(null, input.getText().toString().trim()))
+                    .setNegativeButton(R.string.skip, (d, w) -> arrive(null, null))
+                    .show();
+            return;
+        }
+        // A sample or a parcel: nothing to count. Move now, ask the barcode afterwards.
+        arrive(null, null);
+        if ("SAMPLE_PICKUP".equals(type) || "COLLECTION_SAMPLE".equals(type)) askBarcodeLater();
+    }
+
+    /**
+     * Sends "reached, and I have it" as one request, with the picture attached.
+     *
+     * The screen moves first and the upload follows. If it cannot go now it is written into
+     * the photo queue with the file, and the service pushes it the moment there is data - so
+     * the compulsory photo never becomes a compulsory network connection.
+     */
+    private void arrive(String barcode, String units) {
+        final Location l = lastLocation();
+
+        Map<String, String> fields = new HashMap<>();
+        fields.put("stage", "AT_PICKUP");
+        fields.put("andPicked", "1");
+        fields.put("at", Clock.nowIso());
+        if (barcode != null && !barcode.isEmpty()) fields.put("barcode", barcode);
+        if (units != null && !units.isEmpty()) fields.put("units", units);
+        if (pendingAmount != null && !pendingAmount.isEmpty()) {
+            fields.put("amount", pendingAmount);
+            fields.put("paymentMode", pendingMode == null ? "CASH" : pendingMode);
+        }
+        if (l != null) {
+            fields.put("lat", String.valueOf(l.getLatitude()));
+            fields.put("lng", String.valueOf(l.getLongitude()));
+        }
+
+        // 1. Screen moves now. PICKED, not AT_PICKUP - one press covers both.
+        localStatus = "PICKED";
+        localStatusAt = Clock.nowIso();
+        paint();
+
+        final File shot = photoFile;
+        final Map<String, String> sent = fields;
+
+        // 2. Upload follows, and is queued if it cannot go.
+        api.postPhoto("/api/runner/trip/" + tripId + "/stage", sent, shot, (ok, data, err) -> {
+            if (ok) {
+                trip = data;
+                localStatus = null;
+                localStatusAt = null;
+                pendingAmount = null;
+                pendingMode = null;
+                try { if (shot != null) shot.delete(); } catch (Exception ignored) { }
+                paint();
+                return;
+            }
+            // Hold on to it. The service retries until it lands.
+            queue.addPhotoStage(tripId, "AT_PICKUP", sent, shot == null ? "" : shot.getAbsolutePath());
+            pendingAmount = null;
+            pendingMode = null;
+            paintOfflineNote();
+        });
     }
 
     /**
@@ -583,9 +707,14 @@ public class TripActivity extends BaseActivity {
      */
     private String pendingAmount = null, pendingMode = null;
 
+    /**
+     * The amount goes with whichever press asked for it - the arrival now, or the older
+     * "leaving with it" button on a job that began before the two were joined.
+     */
     private void sendPayment(String amount, String mode) {
         pendingAmount = amount;
         pendingMode = mode;
+        if (photoFile != null && photoFile.exists()) { arrive(null, null); return; }
         send("PICKED", null, null, null);
     }
 

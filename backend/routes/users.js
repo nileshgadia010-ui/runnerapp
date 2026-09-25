@@ -245,7 +245,7 @@ function applyRights(u, req) {
   u.setRights(on);
 }
 
-router.put('/:id', can('manageStaff'), async (req, res) => {
+router.put('/:id', can('manageStaff', 'editRecords'), async (req, res) => {
   const u = await User.findById(req.params.id);
   if (!u) return res.status(404).json({ error: 'Staff member not found' });
 

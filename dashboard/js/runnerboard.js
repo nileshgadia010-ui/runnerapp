@@ -35,6 +35,10 @@ const RunnerBoard = (function () {
     note: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/>',
     send: '<path d="M21 3L3 10.5l7 3 3 7z"/><path d="M21 3l-11 11"/>',
     bike: '<circle cx="6" cy="17" r="3"/><circle cx="18" cy="17" r="3"/><path d="M6 17l4-8h5l3 8M10 9h6"/>',
+    cash: '<rect x="2.5" y="6" width="19" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 9.5v5M18 9.5v5"/>',
+    drop: '<path d="M12 3s6 6.4 6 10.2A6 6 0 016 13.2C6 9.4 12 3 12 3z"/>',
+    tube: '<path d="M9 3h6M10 3v13a2 2 0 004 0V3"/><path d="M10 11h4"/>',
+    box: '<path d="M3 8l9-4 9 4v8l-9 4-9-4z"/><path d="M3 8l9 4 9-4M12 12v8"/>',
     inArrow: '<path d="M14 4h4a2 2 0 012 2v12a2 2 0 01-2 2h-4"/><path d="M3 12h11M10.5 8.5L14 12l-3.5 3.5"/>',
     outArrow: '<path d="M10 4H6a2 2 0 00-2 2v12a2 2 0 002 2h4"/><path d="M21 12H10M17.5 8.5L21 12l-3.5 3.5"/>'
   };
@@ -134,7 +138,49 @@ const RunnerBoard = (function () {
         c.pending ? 'Not Visited / In Progress' : 'Nothing left') +
       stat('dist', I.route, 'Total Distance', c.km + ' km',
         data.today ? 'Today' : F.date(data.date));
+
+    paintHaul();
   }
+
+  /**
+   * What he brought back.
+   *
+   * Places visited says he went; this says what came of it. Only the rows that apply to his
+   * day are shown - a runner who collected no money does not need a zero staring at him, and
+   * an empty row here would make the real figures harder to find.
+   */
+  function paintHaul() {
+    const h = data.collected || {};
+    const tiles = [];
+
+    if (h.payments) {
+      const modes = Object.keys(h.modes || {})
+        .filter(k => h.modes[k])
+        .map(k => k.toLowerCase() + ' ' + money(h.modes[k]))
+        .join(', ');
+      tiles.push(stat('money', I.cash, 'Collection', money(h.amount),
+        h.payments + (h.payments === 1 ? ' payment' : ' payments') + (modes ? ' - ' + modes : '')));
+    }
+    if (h.deliveries) {
+      tiles.push(stat('units', I.drop, 'Blood delivered', h.units || h.deliveries,
+        (h.units ? 'units over ' : '') + h.deliveries + (h.deliveries === 1 ? ' delivery' : ' deliveries')));
+    }
+    if (h.samples) {
+      tiles.push(stat('sample', I.tube, 'Samples brought in', h.samples,
+        h.samples === 1 ? 'one collection' : 'collections finished'));
+    }
+    if (h.parcels) {
+      tiles.push(stat('parcel', I.box, 'Packages delivered', h.parcels,
+        h.parcels === 1 ? 'one parcel' : 'parcels handed over'));
+    }
+
+    const host = el('rbHaul');
+    host.innerHTML = tiles.join('');
+    host.hidden = tiles.length === 0;
+  }
+
+  // Indian grouping, because the figure is read aloud to the office in lakhs, not thousands.
+  const money = n => '\u20B9 ' + Number(n || 0).toLocaleString('en-IN');
 
   const stat = (kind, icon, label, value, sub) =>
     '<div class="rb-stat rb-stat--' + kind + '">' +

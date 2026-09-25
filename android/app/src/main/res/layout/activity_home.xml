@@ -355,6 +355,34 @@
                     android:stateListAnimator="@null" />
             </LinearLayout>
 
+            <!-- Jobs waiting behind the live one. He can tap any of them to head there
+                 first - he knows the roads better than the desk does. -->
+            <LinearLayout
+                android:id="@+id/queueCard"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginTop="14dp"
+                android:visibility="gone">
+
+                <TextView
+                    android:id="@+id/queueHead"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:text="@string/queue_head"
+                    android:textColor="@color/muted"
+                    android:textSize="11sp"
+                    android:letterSpacing="0.12"
+                    android:textStyle="bold" />
+
+                <LinearLayout
+                    android:id="@+id/queueList"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical" />
+            </LinearLayout>
+
             <TextView
                 android:id="@+id/freeNote"
                 android:layout_width="match_parent"

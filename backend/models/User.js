@@ -86,7 +86,7 @@ const ROLE_RIGHTS = {
   admin: {
     manageStaff: true, managePlaces: true, createCases: true,
     assignTrips: true, overrideStages: true, editSettings: true, viewReports: true,
-    deleteRecords: true
+    editRecords: true, deleteRecords: true
   },
   // A coordinator runs the desk day to day, and that includes adding a new runner and
   // writing his shift - waiting for an admin to do it would stall the shift board.
@@ -97,12 +97,12 @@ const ROLE_RIGHTS = {
   coordinator: {
     manageStaff: true, managePlaces: true, createCases: true,
     assignTrips: true, overrideStages: true, editSettings: true, viewReports: true,
-    deleteRecords: false
+    editRecords: true, deleteRecords: false
   },
   runner: {
     manageStaff: false, managePlaces: false, createCases: false,
     assignTrips: false, overrideStages: false, editSettings: false, viewReports: false,
-    deleteRecords: false
+    editRecords: false, deleteRecords: false
   }
 };
 
@@ -125,6 +125,15 @@ userSchema.methods.effectiveRights = function () {
   const granted = this.rightsGranted;
   const out = {};
   Object.keys(ROLE_RIGHTS.admin).forEach(k => { out[k] = granted.indexOf(k) >= 0; });
+
+  // A right that did not exist when this person was last saved was never on the admin's
+  // screen, so its absence from the list means "nobody was ever asked", not "denied".
+  // Falling back to the older right it was split out of keeps a coordinator who could
+  // already edit from silently losing it the day the software is updated. The admin can
+  // switch it off deliberately from the rights screen, which writes both keys.
+  if (granted.indexOf('editRecords') < 0 && granted.indexOf('createCases') >= 0) {
+    out.editRecords = true;
+  }
   return out;
 };
 

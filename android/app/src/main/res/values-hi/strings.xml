@@ -223,4 +223,13 @@
     <string name="near_target">आप %1$s पर हैं</string>
     <string name="skip">छोड़ें</string>
     <string name="step_of">स्टेप %1$d / 3</string>
+    <string name="photo_at_place">yahan photo lena zaroori hai</string>
+    <string name="arrival_photo_saved">Photo save ho gaya. Signal aate hi upload ho jayega.</string>
+    <string name="photo_waiting">%1$d photo upload hona baaki hai</string>
+    <string name="queue_head">AAPKE LIYE AUR BHI HAI</string>
+    <string name="queue_do_this">Ye karein</string>
+    <string name="queue_waiting">Aapke accept karne ka intezaar</string>
+    <string name="queue_accepted">Accept kiya hua</string>
+    <string name="queue_switched">Badal diya. Ab yahi aapka live job hai.</string>
+    <string name="queue_cannot_switch">Pehle jo saath me hai use pura karein.</string>
 </resources>

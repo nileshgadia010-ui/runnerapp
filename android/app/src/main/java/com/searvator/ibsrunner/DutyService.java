@@ -202,6 +202,7 @@ public class DutyService extends Service {
         if (api.online()) {
             flushPings();
             flushActions();
+            flushPhotos();
         }
 
         // 2. Environment signals, every two minutes. Cheap, and worth the record.
@@ -245,7 +246,7 @@ public class DutyService extends Service {
         String head = trip != null
                 ? trip.optString("headline") + " - " + trip.optString("statusLabel")
                 : getString(R.string.note_no_job);
-        int pending = queue.size();
+        int pending = queue.size() + queue.photoCount();
         if (pending > 0) head = head + "  (" + getString(R.string.note_waiting_upload, pending) + ")";
         updateDutyNotification(getString("AVAILABLE".equals(duty) ? R.string.note_on_duty_free : R.string.note_on_duty), head);
     }
@@ -298,6 +299,53 @@ public class DutyService extends Service {
                 b.putExtra("synced", results.length());
                 sendBroadcast(b);
             }
+        } catch (Exception ignored) { }
+    }
+
+    /**
+     * Sends the pictures that were taken while the phone had no data.
+     *
+     * One at a time and oldest first, because each one is a whole JPEG and a runner who has
+     * been out of signal all morning should not have the service try to push six of them up
+     * a weak connection at once. A failure simply leaves the entry where it is for the next
+     * pass; a refusal from the server drops it, because retrying it forever would wedge the
+     * queue behind a photo the server will never take.
+     */
+    private void flushPhotos() {
+        try {
+            JSONArray pend = queue.readPhotos();
+            if (pend.length() == 0) return;
+
+            JSONObject item = pend.getJSONObject(0);
+            String id = item.optString("id");
+            java.io.File f = new java.io.File(item.optString("file"));
+
+            // The picture is gone from the phone - nothing left to send.
+            if (!f.exists()) { queue.removePhoto(id, false); return; }
+
+            java.util.Map<String, String> fields = new java.util.HashMap<>();
+            JSONObject raw = item.optJSONObject("fields");
+            if (raw != null) {
+                java.util.Iterator<String> it = raw.keys();
+                while (it.hasNext()) { String k = it.next(); fields.put(k, raw.optString(k)); }
+            }
+            fields.put("stage", item.optString("stage"));
+            fields.put("at", item.optString("at"));
+
+            JSONObject res = api.postPhotoSync(
+                    "/api/runner/trip/" + item.optString("tripId") + "/stage", fields, f);
+
+            // A null answer means the connection failed, so the entry stays for the next
+            // pass. Anything else - accepted, or refused with a reason - is final: the entry
+            // goes and the picture with it. Keeping a refused one would wedge every photo
+            // behind it forever.
+            if (res == null) return;
+            queue.removePhoto(id, true);
+
+            Intent b = new Intent(BROADCAST_UPDATE);
+            b.setPackage(getPackageName());
+            b.putExtra("photoSynced", 1);
+            sendBroadcast(b);
         } catch (Exception ignored) { }
     }
 

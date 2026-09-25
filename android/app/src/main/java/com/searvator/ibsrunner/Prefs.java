@@ -72,6 +72,11 @@ public class Prefs {
     public String actionQueue() { return sp.getString("actionQueue", "[]"); }
     public void setActionQueue(String json) { sp.edit().putString("actionQueue", json).apply(); }
 
+    // Stages that carry a photo cannot ride in the JSON queue, so they get their own list.
+    // Each entry keeps the path of the picture on the phone until the upload succeeds.
+    public String photoQueue() { return sp.getString("photoQueue", "[]"); }
+    public void setPhotoQueue(String json) { sp.edit().putString("photoQueue", json).apply(); }
+
     /** Cached copy of the last /poll response, so the home screen has something to draw offline. */
     public String lastPoll() { return sp.getString("lastPoll", ""); }
     public void setLastPoll(String json) { sp.edit().putString("lastPoll", json).apply(); }

@@ -286,14 +286,15 @@ const Masters = (function () {
     ['overrideStages', 'Move a stage on the runner\'s behalf'],
     ['editSettings',   'Crossmatch, close and cancel a case'],
     ['viewReports',    'Open the reports and export data'],
+    ['editRecords',    'Edit a saved case, place or staff record'],
     ['deleteRecords',  'Delete cases, jobs, places and staff permanently']
   ];
 
   // What each role normally gets. Mirrors ROLE_RIGHTS on the server; kept here only so a
   // brand new account starts with sensible boxes already ticked instead of all empty.
   const ROLE_DEFAULTS = {
-    admin:       ['manageStaff', 'managePlaces', 'createCases', 'assignTrips', 'overrideStages', 'editSettings', 'viewReports', 'deleteRecords'],
-    coordinator: ['manageStaff', 'managePlaces', 'createCases', 'assignTrips', 'overrideStages', 'editSettings', 'viewReports'],
+    admin:       ['manageStaff', 'managePlaces', 'createCases', 'assignTrips', 'overrideStages', 'editSettings', 'viewReports', 'editRecords', 'deleteRecords'],
+    coordinator: ['manageStaff', 'managePlaces', 'createCases', 'assignTrips', 'overrideStages', 'editSettings', 'viewReports', 'editRecords'],
     runner:      []
   };
 

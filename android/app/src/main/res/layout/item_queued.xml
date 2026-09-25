@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  One job waiting behind the live one.
+
+  Tapping it tells the server "do this one next", which is the whole point: the runner is
+  the one who knows that the second place is on his way and the first is not.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:background="@drawable/card_flat"
+    android:padding="14dp"
+    android:layout_marginBottom="8dp">
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_weight="1"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/qTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@color/ink"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/qWhere"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:textColor="@color/ink_soft"
+            android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/qState"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:textColor="@color/muted"
+            android:textSize="11sp"
+            android:letterSpacing="0.08"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <Button
+        android:id="@+id/qGo"
+        android:layout_width="wrap_content"
+        android:layout_height="44dp"
+        android:minWidth="108dp"
+        android:background="@drawable/btn_dark"
+        android:text="@string/queue_do_this"
+        android:textColor="@color/paper"
+        android:textSize="13sp"
+        android:textStyle="bold"
+        android:stateListAnimator="@null" />
+</LinearLayout>

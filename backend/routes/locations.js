@@ -30,7 +30,7 @@ router.post('/', can('managePlaces'), async (req, res) => {
   res.status(201).json(row);
 });
 
-router.put('/:id', can('managePlaces'), async (req, res) => {
+router.put('/:id', can('managePlaces', 'editRecords'), async (req, res) => {
   const row = await Location.findByIdAndUpdate(req.params.id, req.body, { new: true });
   if (!row) return res.status(404).json({ error: 'Location not found' });
   res.json(row);

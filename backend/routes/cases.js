@@ -86,7 +86,7 @@ router.post('/', can('createCases'), async (req, res) => {
   res.status(201).json(await Case.findById(kase._id).populate(POP));
 });
 
-router.put('/:id', can('createCases'), async (req, res) => {
+router.put('/:id', can('editRecords'), async (req, res) => {
   const b = { ...req.body };
   delete b.caseNo; delete b.status; delete b.sampleTrip; delete b.deliveryTrip;
   const kase = await Case.findByIdAndUpdate(req.params.id, b, { new: true }).populate(POP);

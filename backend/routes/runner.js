@@ -10,7 +10,7 @@ const SLA = require('../config/sla');
 const { auth, allow } = require('../middleware/auth');
 const { tripTat } = require('../services/tat');
 const { roadKm, etaMinutes, kmFromPings } = require('../services/geo');
-const { applyStage, labelFor, jobTitle, queueFor, currentOf, ISTDate } = require('../services/dispatch');
+const { applyStage, labelFor, jobTitle, queueFor, currentOf, IN_HAND, ISTDate } = require('../services/dispatch');
 const realtime = require('../services/realtime');
 
 // Photos are held in memory just long enough to be written into MongoDB. Nothing touches
@@ -184,6 +184,23 @@ router.get('/poll', async (req, res) => {
     ? await Trip.findById(head._id).populate(POP).lean()
     : null;
 
+  // The one ringing is the oldest job he has not accepted yet - which is usually, but not
+  // always, the one on screen.
+  const ringingRow = queue.find(t => t.status === 'ASSIGNED' && t.alertPending);
+  const ringing = ringingRow
+    ? await Trip.findById(ringingRow._id).populate(POP).lean()
+    : null;
+
+  const full = await Trip.find({ _id: { $in: queue.map(t => t._id) } }).populate(POP).lean();
+  const byId = Object.fromEntries(full.map(t => [String(t._id), t]));
+  const cards = queue
+    .map(t => byId[String(t._id)])
+    .filter(Boolean)
+    .map(t => Object.assign(tripCard(t, runner.lastLocation), {
+      isCurrent: trip && String(t._id) === String(trip._id),
+      waiting: t.status === 'ASSIGNED'
+    }));
+
   const date = ISTDate();
   const att = await Attendance.findOne({ runner: runner._id, date }).lean();
   const km = await kmToday(runner._id, date);
@@ -202,10 +219,17 @@ router.get('/poll', async (req, res) => {
     kmToday: km,
     odoStart: att ? att.startOdo : 0,
 
-    ring: !!(trip && trip.status === 'ASSIGNED' && trip.alertPending),
+    // The phone rings for ANY job still waiting to be accepted, not only the one on screen.
+    // A runner carrying a sample can be given the next errand while he rides, and he has to
+    // hear about it then - which is the whole point of stacking work behind him.
+    ring: !!ringing,
+    ringTrip: ringing ? tripCard(ringing, runner.lastLocation) : null,
+
     trip: trip ? tripCard(trip, runner.lastLocation) : null,
 
-    // Jobs assigned to him that are not the one on screen.
+    // Everything he is holding, in the order he means to do it, so the phone can show the
+    // list and let him pick a different one to head for.
+    queue: cards,
     queued: Math.max(0, queue.length - (trip ? 1 : 0)),
     config: { pingInterval: SLA.pingInterval, idlePingInterval: SLA.idlePingInterval, pollInterval: SLA.pollInterval }
   });
@@ -229,6 +253,57 @@ router.get('/trip/active', async (req, res) => {
   const head = currentOf(await queueFor(req.user._id));
   const trip = head ? await Trip.findById(head._id).populate(POP).lean() : null;
   res.json(trip ? tripCard(trip, req.user.lastLocation) : null);
+});
+
+/**
+ * "Do this one next."
+ *
+ * A runner holding two jobs knows the roads better than the desk does. If the second place
+ * is on his way and the first is not, letting him take it first saves a leg - so he can move
+ * any waiting job to the front and the app will start navigating to it.
+ *
+ * The one thing he may NOT do is walk away from something he is already carrying. Once a
+ * sample or a bag of units is in his hand it is on a clock and, for blood, on a temperature
+ * limit; wandering off to collect a payment with it is exactly the failure the TAT report
+ * exists to catch. Errands that carry nothing perishable have no such restriction.
+ */
+router.post('/trip/:id/focus', async (req, res, next) => {
+  try {
+    const queue = await queueFor(req.user._id);
+    const wanted = queue.find(t => String(t._id) === String(req.params.id));
+    if (!wanted) return res.status(404).json({ error: 'That job is not in your list' });
+
+    const current = currentOf(queue);
+    if (current && String(current._id) === String(wanted._id)) {
+      return res.json({ ok: true, unchanged: true });
+    }
+
+    const perishable = t => ['SAMPLE_PICKUP', 'BLOOD_DELIVERY', 'COLLECTION_SAMPLE'].includes(t.type);
+
+    if (current && IN_HAND.includes(current.status) && perishable(current)) {
+      return res.status(409).json({
+        error: 'Finish ' + (current.tripNo || 'the job in your hand') +
+          ' first - you are carrying a sample. Drop it, then this one opens up.'
+      });
+    }
+
+    // Renumber so the chosen job sits at the front and the rest keep their order behind it.
+    const rest = queue.filter(t => String(t._id) !== String(wanted._id));
+    await Trip.updateOne({ _id: wanted._id }, { queueOrder: 0 });
+    for (let i = 0; i < rest.length; i++) {
+      await Trip.updateOne({ _id: rest[i]._id }, { queueOrder: i + 1 });
+    }
+
+    req.user.activeTrip = wanted._id;
+    await req.user.save();
+
+    realtime.emit('trip:update', {
+      tripId: String(wanted._id), status: wanted.status, runnerId: String(req.user._id)
+    });
+
+    const fresh = await Trip.findById(wanted._id).populate(POP).lean();
+    res.json({ ok: true, trip: tripCard(fresh, req.user.lastLocation) });
+  } catch (e) { next(e); }
 });
 
 /* ------------------------------------------------------------------ *
@@ -349,26 +424,58 @@ async function doStage(user, tripId, body) {
   if (!trip) return { error: 'Job not found', code: 404 };
   if (String(trip.runner) !== String(user._id)) return { error: 'This job is not assigned to you', code: 403 };
 
+  const done = async (duplicate) => {
+    const fresh = await Trip.findById(trip._id).populate(POP).lean();
+    return { trip: tripCard(fresh, user.lastLocation), duplicate: !!duplicate };
+  };
+
   // Replaying the same stage after an offline sync is not an error - just report success.
-  if (trip.status === body.stage) {
-    const same = await Trip.findById(trip._id).populate(POP).lean();
-    return { trip: tripCard(same, user.lastLocation), duplicate: true };
+  if (trip.status === body.stage) return done(true);
+
+  // The arrival button also says "and I have it in my hand", so an offline retry of it can
+  // land when the trip has already moved past both. Treat that as the replay it is, rather
+  // than rejecting it as an illegal backwards move and leaving the phone stuck.
+  if (body.andPicked && ['PICKED', 'EN_ROUTE_DROP', 'AT_DROP', 'COMPLETED'].includes(trip.status)) {
+    return done(true);
   }
 
   if (body.stage === 'COMPLETED' && trip.type === 'BLOOD_DELIVERY' && !body.proofPhoto && !trip.proofPhoto) {
     return { error: 'Take a photo of the handed-over pack to finish', code: 400 };
   }
 
-  await applyStage(trip, body.stage, {
+  // Arriving is now compulsory-photo for every job, not only the two that end in a handover.
+  // The photo is what makes "I reached the hospital at 10:40" checkable months later.
+  if (body.stage === 'AT_PICKUP' && !body.proofPhoto) {
+    return { error: 'Take a photo at the place to record that you reached it', code: 400 };
+  }
+
+  const opts = {
     lat: body.lat, lng: body.lng, note: body.note,
     barcode: body.barcode, units: body.units,
     amount: body.amount, paymentMode: body.paymentMode, paymentRef: body.paymentRef,
     proofPhoto: body.proofPhoto,
     at: safeTime(body.at), by: 'runner'
-  });
+  };
 
-  const fresh = await Trip.findById(trip._id).populate(POP).lean();
-  return { trip: tripCard(fresh, user.lastLocation) };
+  await applyStage(trip, body.stage, opts);
+
+  /*
+   * One tap, two stages.
+   *
+   * The runner presses "I have reached X" once; standing in a hospital corridor pressing a
+   * second button to say he is now leaving with the thing is work the job does not deserve.
+   * So the arrival and the collection are stamped together, from a single request - which
+   * also means one round trip on a phone in traffic, and one entry in the offline queue
+   * instead of two that could be split by a dropped connection.
+   *
+   * The cost is that "time spent at the pickup" is now always zero. That is honest: with one
+   * button there is nothing left to measure it with. Every other TAT figure is unchanged.
+   */
+  if (body.andPicked && trip.status === 'AT_PICKUP') {
+    await applyStage(trip, 'PICKED', opts);
+  }
+
+  return done(false);
 }
 
 // Every stage button in the app lands here: accept, reject, reached, collected, delivered.
@@ -387,6 +494,8 @@ router.post('/trip/:id/stage', upload.single('photo'), async (req, res, next) =>
       barcode: req.body.barcode, units: req.body.units,
       amount: req.body.amount, paymentMode: req.body.paymentMode, paymentRef: req.body.paymentRef,
       at: req.body.at,
+      // Sent as a form field, so it arrives as the string "1" rather than a boolean.
+      andPicked: req.body.andPicked === '1' || req.body.andPicked === true,
       proofPhoto
     });
     if (result.error) return res.status(result.code || 400).json({ error: result.error });

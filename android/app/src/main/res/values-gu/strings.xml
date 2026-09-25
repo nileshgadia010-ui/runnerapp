@@ -223,4 +223,13 @@
     <string name="near_target">તમે %1$s પર છો</string>
     <string name="skip">છોડો</string>
     <string name="step_of">સ્ટેપ %1$d / 3</string>
+    <string name="photo_at_place">અહીં ફોટો લેવો જરૂરી છે</string>
+    <string name="arrival_photo_saved">ફોટો સેવ થયો. સિગ્નલ આવતાં અપલોડ થશે.</string>
+    <string name="photo_waiting">%1$d ફોટો અપલોડ થવાનો બાકી છે</string>
+    <string name="queue_head">તમારા માટે બીજું પણ છે</string>
+    <string name="queue_do_this">આ કરો</string>
+    <string name="queue_waiting">તમે સ્વીકારો તેની રાહ</string>
+    <string name="queue_accepted">સ્વીકારેલું</string>
+    <string name="queue_switched">બદલાઈ ગયું. હવે આ તમારું લાઈવ કામ છે.</string>
+    <string name="queue_cannot_switch">પહેલાં જે સાથે છે તે પૂરું કરો.</string>
 </resources>

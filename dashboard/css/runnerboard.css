@@ -273,3 +273,12 @@
   .rb-who { flex-wrap: wrap; }
   .rb-who__pick { margin-left: 0; width: 100%; }
 }
+
+/* The second counter row: what he actually brought back. Its own colours, so money and
+   units never read as another copy of the visit counts above them. */
+.rb-stat--money  .rb-stat__icon { background: var(--rb-visited-soft); color: var(--rb-visited); }
+.rb-stat--money  .rb-stat__value { color: var(--rb-visited); }
+.rb-stat--units  .rb-stat__icon { background: var(--crimson-soft); color: var(--crimson); }
+.rb-stat--sample .rb-stat__icon { background: var(--rb-live-soft); color: var(--rb-live); }
+.rb-stat--parcel .rb-stat__icon { background: var(--rb-pending-soft); color: var(--rb-pending); }
+#rbHaul { margin-top: -2px; }

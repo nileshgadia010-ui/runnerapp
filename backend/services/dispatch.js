@@ -80,10 +80,20 @@ async function queueFor(runnerId) {
     .sort({ queueOrder: 1, assignedAt: 1 }).lean();
 }
 
-// Picks the trip the app should be showing. In-progress beats waiting, and among equals the
-// oldest wins - a runner should finish what he started before the next one appears.
+/**
+ * Picks the trip the app should be showing.
+ *
+ * Anything already in his hand wins outright - he cannot be carrying a sample and doing a
+ * different job at the same time, so that one stays on screen until he puts it down.
+ *
+ * Beyond that it is simply the front of the queue. The order is the runner's to change (see
+ * the focus endpoint): he is the one who knows which place is on his way, and a desk that
+ * insists on its own order just sends him across town twice.
+ */
+const IN_HAND = ['PICKED', 'EN_ROUTE_DROP', 'AT_DROP'];
+
 function currentOf(queue) {
-  return queue.find(t => t.status !== 'ASSIGNED') || queue[0] || null;
+  return queue.find(t => IN_HAND.includes(t.status)) || queue[0] || null;
 }
 
 // After a trip ends, whatever is next in the queue becomes the live one and the phone rings
@@ -186,9 +196,10 @@ async function assignTrip({ caseId, type, runnerId, assignedBy }) {
     queueOrder: queue.length,
     assignedAt: now,
     assignedBy,
-    // Only ring straight away if this is the job he will actually be doing next. A job
-    // stacked behind a running one rings when its turn comes, not while he is riding.
-    alertPending: queue.length === 0,
+    // Every new job rings, even one that lines up behind a job already in hand. The runner
+    // needs to know the work exists while he can still plan his route round it - telling him
+    // only after he finishes the current one is the same as not telling him.
+    alertPending: true,
     events: [{ status: 'ASSIGNED', at: now, note: labelFor(type, 'ASSIGNED'), by: 'desk' }]
   });
 
@@ -317,5 +328,5 @@ function httpError(status, message) {
   return e;
 }
 
-module.exports = { assignTrip, applyStage, labelFor, jobTitle, JOB, queueFor, currentOf,
+module.exports = { assignTrip, applyStage, labelFor, jobTitle, JOB, queueFor, currentOf, IN_HAND,
                    promoteNext, ACTIVE, MAX_QUEUE, ISTDate, httpError };
