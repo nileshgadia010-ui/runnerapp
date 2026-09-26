@@ -117,9 +117,25 @@ router.get('/:runnerId', async (req, res, next) => {
 
     const sessions = (att && att.sessions) || [];
     const stops = buildStops(trips);
-    const photoByTrip = {};
-    photos.filter(p => p.kind === 'PROOF' && p.trip)
-      .forEach(p => { photoByTrip[String(p.trip)] = String(p._id); });
+    // A job can now carry two pictures - one where he arrived, one where he handed over -
+    // so they are matched to the moment they were taken rather than lumped under the trip.
+    // Keeping one photo per trip meant the later one was shown against both stops.
+    const tripPhotos = {};
+    photos.filter(p => p.kind === 'PROOF' && p.trip).forEach(p => {
+      (tripPhotos[String(p.trip)] = tripPhotos[String(p.trip)] || []).push(p);
+    });
+
+    /** The picture taken closest to `when`, within a few minutes of it. */
+    const photoNear = (tripId, when) => {
+      const list = tripPhotos[String(tripId)];
+      if (!list || !when) return '';
+      let best = null;
+      list.forEach(p => {
+        const gap = Math.abs(new Date(p.at) - new Date(when));
+        if (gap <= 10 * 60000 && (!best || gap < best.gap)) best = { gap, id: String(p._id) };
+      });
+      return best ? best.id : '';
+    };
 
     // Distance: the GPS trail is the honest figure. The odometer is kept alongside rather
     // than instead of it, because the two disagreeing is itself worth seeing.
@@ -206,13 +222,13 @@ router.get('/:runnerId', async (req, res, next) => {
       movedPoints: cleanTrail(pings).length,
 
       stops,
-      timeline: buildTimeline(sessions, trips, stops, att, photoByTrip),
+      timeline: buildTimeline(sessions, trips, stops, att, photoNear),
       notes: trips.filter(t => t.runnerNote).map(t => ({
         at: t.completedAt || t.atDropAt || t.assignedAt,
         text: t.runnerNote,
         tripNo: t.tripNo,
         place: t.dropLocation ? t.dropLocation.name : '',
-        photo: photoByTrip[String(t._id)] || t.proofPhoto || ''
+        photo: t.proofPhoto || t.arrivalPhoto || ''
       })).sort((a, b) => new Date(b.at) - new Date(a.at))
     });
   } catch (e) { next(e); }
@@ -301,7 +317,7 @@ function buildStops(trips) {
  * Punches and visits live in different collections and neither knows about the other, which
  * is exactly why they are worth merging here - the sequence is the thing the office reads.
  */
-function buildTimeline(sessions, trips, stops, att, photoByTrip) {
+function buildTimeline(sessions, trips, stops, att, photoNear) {
   const rows = [];
 
   sessions.forEach((s, i) => {
@@ -339,7 +355,10 @@ function buildTimeline(sessions, trips, stops, att, photoByTrip) {
       lat: ev && ev.lat !== undefined ? ev.lat : s.lat,
       lng: ev && ev.lng !== undefined ? ev.lng : s.lng,
       fromPhone: !!(ev && ev.lat !== undefined),
-      photo: photoByTrip[s.tripId] || '',
+      photo: photoNear(s.tripId, s.reachedAt),
+      // An arrival with no picture behind it. Says plainly that the proof is missing rather
+      // than leaving an empty cell that reads the same as "not looked at yet".
+      noPhoto: s.kind === 'PICKUP' && !photoNear(s.tripId, s.reachedAt),
       status: s.leftAt ? 'COMPLETED' : 'IN_PROGRESS',
       label: 'Connection Visit',
       stopN: s.n, tripNo: s.tripNo, did: s.did, what: s.what,

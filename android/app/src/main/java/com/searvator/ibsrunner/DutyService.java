@@ -71,6 +71,16 @@ public class DutyService extends Service {
     private long lastPingAt = 0;
     private long lastIntegrityAt = 0;
     private String ringingTripId = null;
+
+    /**
+     * Jobs whose alarm he has already answered.
+     *
+     * Silencing used to only stop the sound. The next poll, a few seconds later, still said
+     * the job was unanswered - the server had not caught up - saw that nothing was playing,
+     * and started the alarm again. From the runner's side the accept button simply did not
+     * work. Remembering what he answered closes that window, however slow the network is.
+     */
+    private final java.util.LinkedHashSet<String> answered = new java.util.LinkedHashSet<>();
     private boolean alarmPlaying = false;
     private boolean onJob = false;
     private boolean running = false;
@@ -114,6 +124,11 @@ public class DutyService extends Service {
             return START_NOT_STICKY;
         }
         if (ACTION_STOP_ALARM.equals(action)) {
+            if (ringingTripId != null) {
+                answered.add(ringingTripId);
+                while (answered.size() > 40) answered.remove(answered.iterator().next());
+            }
+            ringingTripId = null;
             stopAlarm();
             return START_STICKY;
         }
@@ -221,6 +236,13 @@ public class DutyService extends Service {
                 cfg.optInt("pingInterval", 8), cfg.optInt("idlePingInterval", 30));
 
         JSONObject trip = poll.optJSONObject("trip");
+
+        // The job waiting to be accepted is not always the one on screen. A runner already
+        // carrying a sample can be handed the next errand, and it is THAT one he has to be
+        // told about - ringing for the job in his hand tells him nothing he does not know.
+        JSONObject ringTrip = poll.optJSONObject("ringTrip");
+        if (ringTrip == null) ringTrip = trip;
+
         boolean ring = poll.optBoolean("ring", false);
         onJob = trip != null;
 
@@ -229,16 +251,25 @@ public class DutyService extends Service {
         b.putExtra("payload", poll.toString());
         sendBroadcast(b);
 
-        if (ring && trip != null) {
-            final String tripId = trip.optString("id");
-            // New job, or the same job still unanswered and the alarm has somehow stopped
-            // (a phone can kill a MediaPlayer). Either way: ring.
-            if (!tripId.equals(ringingTripId) || !alarmPlaying) {
+        if (ring && ringTrip != null) {
+            final String tripId = ringTrip.optString("id");
+            final JSONObject ringing = ringTrip;
+
+            if (answered.contains(tripId)) {
+                // He has already dealt with this one; the server just has not caught up.
+                if (alarmPlaying) stopAlarm();
+            } else if (!tripId.equals(ringingTripId) || !alarmPlaying) {
+                // A new job, or the same one still unanswered and the alarm has somehow
+                // stopped - a phone can kill a MediaPlayer. Either way: ring.
                 ringingTripId = tripId;
-                new Handler(Looper.getMainLooper()).post(() -> raiseAlarm(trip));
+                final boolean queued = trip != null && !tripId.equals(trip.optString("id"));
+                new Handler(Looper.getMainLooper()).post(() -> raiseAlarm(ringing, queued));
             }
         } else if (!ring) {
             ringingTripId = null;
+            // Nothing is waiting, so anything remembered can go. This is what lets a job
+            // that is reassigned to him later ring properly all over again.
+            answered.clear();
             if (alarmPlaying) stopAlarm();
         }
 
@@ -371,11 +402,16 @@ public class DutyService extends Service {
 
     /* ---------------- the alarm ---------------- */
 
-    private void raiseAlarm(JSONObject trip) {
+    /**
+     * @param queued true when this job is lining up behind one he is already doing, which
+     *               changes where he lands after accepting it.
+     */
+    private void raiseAlarm(JSONObject trip, boolean queued) {
         playAlarm();
 
         Intent full = new Intent(this, AlertActivity.class);
         full.putExtra("trip", trip.toString());
+        full.putExtra("queued", queued);
         full.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
 
         PendingIntent pi = PendingIntent.getActivity(this, 1, full,

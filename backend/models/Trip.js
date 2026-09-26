@@ -60,7 +60,11 @@ const tripSchema = new mongoose.Schema({
   amountCollected: Number,
   paymentMode: String,
   paymentRef: String,
+  // The handover shot, taken when he gives the thing over.
   proofPhoto: String,
+  // The arrival shot, taken when he reaches the first place. Kept separately because the
+  // two used to share one field and the second one silently erased the first.
+  arrivalPhoto: String,
   rejectReason: String,
   runnerNote: String,
   distanceKm: { type: Number, default: 0 },

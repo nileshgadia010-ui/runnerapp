@@ -254,7 +254,11 @@ async function applyStage(trip, stage, opts = {}) {
   if (stage === 'CANCELLED') { trip.cancelledAt = now; trip.rejectReason = opts.note || ''; }
   if (opts.barcode) trip.sampleBarcode = opts.barcode;
   if (opts.units !== undefined && opts.units !== null && opts.units !== '') trip.unitsCarried = Number(opts.units);
-  if (opts.proofPhoto) trip.proofPhoto = opts.proofPhoto;
+  // Arriving and handing over are two different moments and two different pictures.
+  if (opts.proofPhoto) {
+    if (stage === 'AT_PICKUP') trip.arrivalPhoto = opts.proofPhoto;
+    else trip.proofPhoto = opts.proofPhoto;
+  }
   if (opts.amount !== undefined && opts.amount !== null && opts.amount !== '') trip.amountCollected = Number(opts.amount);
   if (opts.paymentMode) trip.paymentMode = opts.paymentMode;
   if (opts.paymentRef) trip.paymentRef = opts.paymentRef;

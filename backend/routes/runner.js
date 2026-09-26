@@ -443,11 +443,19 @@ async function doStage(user, tripId, body) {
     return { error: 'Take a photo of the handed-over pack to finish', code: 400 };
   }
 
-  // Arriving is now compulsory-photo for every job, not only the two that end in a handover.
-  // The photo is what makes "I reached the hospital at 10:40" checkable months later.
-  if (body.stage === 'AT_PICKUP' && !body.proofPhoto) {
-    return { error: 'Take a photo at the place to record that you reached it', code: 400 };
-  }
+  /*
+   * The arrival photo is compulsory in the APP, not here.
+   *
+   * It was enforced here first, and that was a mistake: a phone still running the previous
+   * build cannot send one, so every runner who had not yet updated was simply unable to
+   * record that he had arrived. A rule that stops real work in a blood service is worse
+   * than the gap it closes.
+   *
+   * So the app is what insists - the camera opens and there is no way past it - and the
+   * server records honestly whether a picture actually came. An arrival with no photo is
+   * accepted, marked, and visible on the dashboard, which is the useful outcome: the work
+   * continues and the office can see whose phone needs updating.
+   */
 
   const opts = {
     lat: body.lat, lng: body.lng, note: body.note,
@@ -472,7 +480,10 @@ async function doStage(user, tripId, body) {
    * button there is nothing left to measure it with. Every other TAT figure is unchanged.
    */
   if (body.andPicked && trip.status === 'AT_PICKUP') {
-    await applyStage(trip, 'PICKED', opts);
+    // The picture belongs to the arrival and has already been filed there. Passing it again
+    // would write it a second time as the handover proof, and the real handover photo taken
+    // an hour later would then look like a correction rather than a separate moment.
+    await applyStage(trip, 'PICKED', Object.assign({}, opts, { proofPhoto: undefined }));
   }
 
   return done(false);

@@ -166,9 +166,18 @@ public class AlertActivity extends BaseActivity {
         }
     }
 
+    /**
+     * Where he lands after accepting.
+     *
+     * A first job opens straight away - that is the job, there is nothing to choose between.
+     * A job that lines up behind one he is already doing sends him home instead, where he
+     * can see both and pick which to head for. Dropping him into the new job's screen while
+     * he is carrying something else invites him to start the wrong one.
+     */
     private void openTrip() {
-        Intent i = new Intent(this, TripActivity.class);
-        i.putExtra("tripId", tripId);
+        Intent i = getIntent().getBooleanExtra("queued", false)
+                ? new Intent(this, HomeActivity.class)
+                : new Intent(this, TripActivity.class).putExtra("tripId", tripId);
         i.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         startActivity(i);
         finish();

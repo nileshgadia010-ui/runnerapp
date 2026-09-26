@@ -310,7 +310,10 @@ const RunnerBoard = (function () {
       '<td>' + (r.photo
         ? '<img class="rb-tl__shot" src="/uploads/' + F.esc(r.photo) + '" alt="photo" loading="lazy" ' +
           'data-shot="' + F.esc(r.photo) + '" data-cap="' + F.esc((r.label || '') + ' - ' + F.time(r.at)) + '">'
-        : '<span class="rb-tl__noshot">-</span>') + '</td>' +
+        : r.noPhoto
+          ? '<span class="rb-tl__noshot rb-tl__noshot--missing" title="He reached, but no photo came with it. ' +
+            'Usually an older app on his phone.">no photo</span>'
+          : '<span class="rb-tl__noshot">-</span>') + '</td>' +
       '<td>' + statusPill(r) + '</td>' +
       '</tr>').join('');
 
