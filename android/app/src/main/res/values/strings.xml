@@ -232,4 +232,12 @@
     <string name="queue_accepted">Accepted</string>
     <string name="queue_switched">Switched. This one is now your live job.</string>
     <string name="queue_cannot_switch">Finish what you are carrying first.</string>
+    <string name="hand_back">I cannot do this job</string>
+    <string name="hand_back_title">Give this job back?</string>
+    <string name="hand_back_msg">The desk will see it and send someone else. Say why:</string>
+    <string name="hand_back_hint">Bike puncture, hospital said come later...</string>
+    <string name="hand_back_need_reason">Please say why, so the desk can send someone else</string>
+    <string name="hand_back_done">Given back. The desk can send someone else.</string>
+    <string name="hand_back_carrying">You are already carrying this one. Deliver it, or call the desk.</string>
+    <string name="queue_head_many">ALSO WAITING FOR YOU (%1$d)</string>
 </resources>

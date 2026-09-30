@@ -104,6 +104,7 @@ const RunnerBoard = (function () {
     paintMap(quiet);
     paintTimeline();
     paintSummary();
+    paintDoing();
     paintRoute();
 
     // Keep whatever the reader was looking at across a background refresh; otherwise open on
@@ -198,19 +199,74 @@ const RunnerBoard = (function () {
     if (typeof L === 'undefined') return;              // map library blocked or offline
 
     if (!map) {
-      map = L.map('rbMap', { zoomControl: true, attributionControl: false });
+      // keyboard: false removes the container's tabindex, and with it a real trap: pressing
+      // the mouse on a pin focused the map, the browser scrolled the focused element into
+      // view inside the app's own scrolling area, and the map slid a few pixels down between
+      // the press and the release - so the click landed on the map instead of the pin and
+      // nothing opened. Panning and zooming by mouse are unaffected; this map is for reading.
+      map = L.map('rbMap', { zoomControl: true, attributionControl: false, keyboard: false });
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
       pinLayer = L.layerGroup().addTo(map);
       map.setView([23.0225, 72.5714], 12);
     }
-    pinLayer.clearLayers();
-    if (trailLine) { map.removeLayer(trailLine); trailLine = null; }
+    // Rebuild the pins only when they have actually changed.
+    //
+    // The refresh used to clear and recreate every marker each time, which meant the map
+    // twitched every half minute and a click that landed just as it happened went to an
+    // element that no longer existed - the pin looked pressed and nothing opened.
+    const shape = JSON.stringify(data.stops.map(s => [s.n, s.lat, s.lng, s.status]));
+    const trailShape = JSON.stringify(data.trail);
+
+    if (shape !== pinShape) {
+      pinShape = shape;
+      pinLayer.clearLayers();
+      drawPins();
+    }
+    if (trailShape !== trailDrawn) {
+      trailDrawn = trailShape;
+      if (trailLine) { map.removeLayer(trailLine); trailLine = null; }
+      if (data.trail.length > 1) {
+        trailLine = L.polyline(data.trail, { color: '#2F4FCD', weight: 3.5, opacity: .85 }).addTo(map);
+      }
+    }
     if (riderMark) { map.removeLayer(riderMark); riderMark = null; }
 
-    if (data.trail.length > 1) {
-      trailLine = L.polyline(data.trail, { color: '#2F4FCD', weight: 3.5, opacity: .85 }).addTo(map);
-    }
+    paintRider();
+    paintHere();
 
+    // Frame the day, not the city. Only on a fresh load - a background refresh must not yank
+    // the map away from wherever the reader had panned it.
+    if (!quiet) {
+      const pts = data.trail.concat(
+        data.stops.filter(s => typeof s.lat === 'number').map(s => [s.lat, s.lng]),
+        data.live ? [[data.live.lat, data.live.lng]] : []
+      );
+      if (pts.length) map.fitBounds(L.latLngBounds(pts).pad(0.18), { maxZoom: 15 });
+    }
+    remeasure();
+  }
+
+  let pinShape = null, trailDrawn = null, boxW = 0, boxH = 0;
+
+  /**
+   * Tells Leaflet the map changed size - but only when it actually did.
+   *
+   * This used to run on every refresh, twice a minute, and each call nudges every marker to
+   * a freshly computed position. A pin that moves a pixel between the press and the release
+   * means the browser reports the click on the map underneath instead of on the pin, so the
+   * pin looked dead until you clicked it a second time. Measuring first costs nothing and
+   * the map now holds still unless the window or the layout really moved.
+   */
+  function remeasure() {
+    const box = el('rbMap');
+    if (!box) return;
+    const w = box.clientWidth, h = box.clientHeight;
+    if (w === boxW && h === boxH) return;
+    boxW = w; boxH = h;
+    setTimeout(() => map && map.invalidateSize(), 60);
+  }
+
+  function drawPins() {
     data.stops.forEach(s => {
       if (typeof s.lat !== 'number') return;
       L.marker([s.lat, s.lng], {
@@ -224,30 +280,19 @@ const RunnerBoard = (function () {
           (s.reachedAt ? '<br>reached ' + F.time(s.reachedAt) : '<br>' + F.esc(s.why)))
         .on('click', () => paintConn(s));
     });
+  }
 
-    if (data.live) {
-      riderMark = L.marker([data.live.lat, data.live.lng], {
-        icon: L.divIcon({
-          className: '',
-          html: '<div class="rb-rider">' + svg(I.bike, 2) + '</div>',
-          iconSize: [34, 34], iconAnchor: [17, 17]
-        }),
-        zIndexOffset: 1000
-      }).addTo(map);
-    }
-
-    paintHere();
-
-    // Frame the day, not the city. Only on a fresh load - a background refresh must not yank
-    // the map away from wherever the reader had panned it.
-    if (!quiet) {
-      const pts = data.trail.concat(
-        data.stops.filter(s => typeof s.lat === 'number').map(s => [s.lat, s.lng]),
-        data.live ? [[data.live.lat, data.live.lng]] : []
-      );
-      if (pts.length) map.fitBounds(L.latLngBounds(pts).pad(0.18), { maxZoom: 15 });
-    }
-    setTimeout(() => map.invalidateSize(), 60);
+  /** The rider moves every refresh, so this one is always redrawn. */
+  function paintRider() {
+    if (!data.live) return;
+    riderMark = L.marker([data.live.lat, data.live.lng], {
+      icon: L.divIcon({
+        className: '',
+        html: '<div class="rb-rider">' + svg(I.bike, 2) + '</div>',
+        iconSize: [34, 34], iconAnchor: [17, 17]
+      }),
+      zIndexOffset: 1000
+    }).addTo(map);
   }
 
   /** The floating card over the map: who this is and when he was last heard from. */
@@ -380,6 +425,39 @@ const RunnerBoard = (function () {
   const row = (icon, label, value) =>
     '<div class="rb-row">' + svg(icon) + '<span>' + F.esc(label) + '</span><b>' + F.esc(String(value)) + '</b></div>';
 
+  /**
+   * What he is on at this moment.
+   *
+   * The screen could always say where he had been and where he was sent, but never which of
+   * several jobs he is actually doing - which is the first thing the desk asks when a
+   * hospital rings to say nobody has turned up.
+   */
+  function paintDoing() {
+    const d = data.doing;
+    const host = el('rbDoing');
+    const card = el('rbDoingCard');
+
+    if (!d) {
+      card.hidden = true;
+      return;
+    }
+    card.hidden = false;
+    host.innerHTML =
+      '<div class="rb-doing' + (d.carrying ? ' rb-doing--carrying' : '') + '">' +
+      '<div class="rb-doing__leg">' + F.esc(d.leg) +
+        '<span class="mono"> &middot; ' + F.esc(d.tripNo || '') + '</span></div>' +
+      '<div class="rb-doing__where">' + svg(I.pin) + ' ' + F.esc(d.heading || 'no place set') +
+        (d.area ? '<small> ' + F.esc(d.area) + '</small>' : '') + '</div>' +
+      '<div class="rb-doing__stage">' + F.esc(d.stage) +
+        (d.what ? ' &middot; ' + F.esc(d.what) : '') + '</div>' +
+      '</div>' +
+      (d.waiting > 0
+        ? '<div class="rb-doing__queued">' + d.waiting +
+          (d.waiting === 1 ? ' more job waiting behind this one' : ' more jobs waiting behind this one') +
+          '</div>'
+        : '<div class="rb-doing__queued rb-doing__queued--none">Nothing else waiting</div>');
+  }
+
   function paintRoute() {
     const r = data.route;
     if (!r.startAt && !r.lastAt) {
@@ -451,7 +529,11 @@ const RunnerBoard = (function () {
   }
 
   /** The shell calls this when the map becomes visible again after being hidden. */
-  function resize() { if (map) map.invalidateSize(); }
+  function resize() {
+    if (!map) return;
+    boxW = 0; boxH = 0;        // it was hidden, so whatever was measured before means nothing
+    map.invalidateSize();
+  }
 
   return { boot, resize };
 })();

@@ -65,7 +65,25 @@ const Cases = (function () {
     if (c.status === 'CROSSMATCH') return '<button class="btn btn--blue btn--sm" data-act="xm-done" data-id="' + c._id + '">Crossmatch result</button>';
     if (c.status === 'READY') return '<button class="btn btn--red btn--sm" data-act="assign-delivery" data-id="' + c._id + '">Send blood</button>';
     if (c.status === 'DELIVERED') return '<button class="btn btn--ghost btn--sm" data-act="close" data-id="' + c._id + '">Close case</button>';
+
+    // A case with a runner on it used to offer nothing but "Open", so changing your mind
+    // about a job already sent out meant hunting through a drawer for the buttons. The two
+    // things the desk actually does at this point now sit on the row.
+    const t = runningTrip(c);
+    if (t) {
+      return '<button class="btn btn--ghost btn--sm" data-act="swap" data-trip="' + t._id + '">Change runner</button>' +
+             '<button class="btn btn--ghost btn--sm" data-act="stop" data-trip="' + t._id + '"' +
+             ' style="color:var(--crimson)">Cancel job</button>';
+    }
     return '<button class="btn btn--ghost btn--sm" data-act="view" data-id="' + c._id + '">Open</button>';
+  }
+
+  const RUNNING = ['ASSIGNED', 'ACCEPTED', 'EN_ROUTE_PICKUP', 'AT_PICKUP', 'PICKED', 'EN_ROUTE_DROP', 'AT_DROP'];
+
+  /** The job actually out on the road for this case, whichever leg it belongs to. */
+  function runningTrip(c) {
+    return [c.sampleTrip, c.deliveryTrip, c.jobTrip]
+      .filter(t => t && RUNNING.includes(t.status))[0] || null;
   }
 
   const isBlood = c => !c.jobType || c.jobType === 'BLOOD';
@@ -108,20 +126,49 @@ const Cases = (function () {
 
     host.querySelectorAll('button[data-act]').forEach(b => b.addEventListener('click', e => {
       e.stopPropagation();
-      act(b.dataset.act, b.dataset.id, b.dataset.leg);
+      act(b.dataset.act, b.dataset.id, b.dataset.leg, b.dataset.trip);
     }));
     host.querySelectorAll('tr').forEach(tr => tr.addEventListener('click', () => openCase(tr.dataset.id)));
     UI.wireDelete(host, load);
   }
 
-  async function act(action, id, leg) {
+  async function act(action, id, leg, trip) {
     try {
+      if (action === 'swap') return pickRunner(rid => handOver(trip, rid));
+      if (action === 'stop') return stopTrip(trip);
       if (action === 'assign-first') return pickRunner(rid => assign(id, leg || 'SAMPLE_PICKUP', rid));
       if (action === 'assign-delivery') return pickRunner(rid => assign(id, 'BLOOD_DELIVERY', rid));
       if (action === 'xm-start') { await API.post('/api/cases/' + id + '/crossmatch/start'); toast('Crossmatch clock started', 'ok'); return load(); }
       if (action === 'xm-done') return crossmatchForm(id);
       if (action === 'close') { await API.post('/api/cases/' + id + '/close'); toast('Case closed', 'ok'); return load(); }
       if (action === 'view') return openCase(id);
+    } catch (e) { toast(e.message, 'error'); }
+  }
+
+  /** Takes the job off one runner and gives it to another, in one step. */
+  async function handOver(tripId, runnerId) {
+    try {
+      await API.post('/api/trips/' + tripId + '/reassign', { runnerId });
+      toast('Handed over - the new runner phone is ringing', 'ok');
+      UI.closeDrawer();
+      load();
+      Live.refresh();
+    } catch (e) { toast(e.message, 'error'); }
+  }
+
+  /**
+   * Calls the job off. The reason is required because it is the only thing that tells the
+   * next person why a case went back to waiting.
+   */
+  async function stopTrip(tripId) {
+    const reason = prompt('Why is this job being cancelled?\n\nThe runner phone will stop asking for it.');
+    if (reason === null) return;
+    if (!reason.trim()) { toast('Write a reason so the desk knows why', 'error'); return; }
+    try {
+      await API.post('/api/trips/' + tripId + '/cancel', { reason: reason.trim() });
+      toast('Job cancelled. The case is waiting to be assigned again.', 'ok');
+      load();
+      Live.refresh();
     } catch (e) { toast(e.message, 'error'); }
   }
 

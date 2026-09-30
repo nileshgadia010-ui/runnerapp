@@ -256,6 +256,46 @@ router.get('/trip/active', async (req, res) => {
 });
 
 /**
+ * Giving a job back.
+ *
+ * A shift does not always go the way the desk planned it: the bike gives up, the hospital
+ * says come tomorrow, he is sent home sick. Until now the only way out was for somebody at
+ * the desk to notice and cancel it, so jobs sat on a runner all day looking active.
+ *
+ * He may hand back anything he has not yet collected. Once a sample or a bag of units is in
+ * his hand the button is gone - that is a phone call to the desk, not a tap, because
+ * something perishable is now somewhere the system would stop tracking.
+ */
+router.post('/trip/:id/handback', async (req, res, next) => {
+  try {
+    const trip = await Trip.findById(req.params.id);
+    if (!trip) return res.status(404).json({ error: 'Job not found' });
+    if (String(trip.runner) !== String(req.user._id)) {
+      return res.status(403).json({ error: 'This job is not assigned to you' });
+    }
+    if (['COMPLETED', 'REJECTED', 'CANCELLED'].includes(trip.status)) {
+      return res.status(400).json({ error: 'This job is already closed' });
+    }
+    if (IN_HAND.includes(trip.status)) {
+      return res.status(409).json({
+        error: 'You are already carrying this one. Deliver it, or call the desk.'
+      });
+    }
+
+    const reason = String((req.body && req.body.reason) || '').trim();
+    if (reason.length < 3) {
+      return res.status(400).json({ error: 'Say why, so the desk can send someone else' });
+    }
+
+    await applyStage(trip, 'REJECTED', {
+      note: reason, at: safeTime(req.body && req.body.at), by: 'runner'
+    });
+
+    res.json({ ok: true, message: 'Given back. The desk can send someone else.' });
+  } catch (e) { next(e); }
+});
+
+/**
  * "Do this one next."
  *
  * A runner holding two jobs knows the roads better than the desk does. If the second place

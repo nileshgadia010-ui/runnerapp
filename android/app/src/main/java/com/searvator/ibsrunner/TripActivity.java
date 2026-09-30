@@ -56,6 +56,7 @@ public class TripActivity extends BaseActivity {
     private TextView headline, patient, meta, ward, pickupName, pickupSub, dropName, dropSub,
             stageText, stageTimer, totalTimer, remarks, barcodeLine, distanceLine, offlineNote, stepLine;
     private Button actionBtn, navBtn, callBtn;
+    private TextView handBack;
 
     @Override
     protected void onCreate(Bundle b) {
@@ -84,6 +85,8 @@ public class TripActivity extends BaseActivity {
         offlineNote = findViewById(R.id.tOffline);
         stepLine = findViewById(R.id.tStep);
         actionBtn = findViewById(R.id.tAction);
+        handBack = findViewById(R.id.tHandBack);
+        handBack.setOnClickListener(v -> askHandBack());
         navBtn = findViewById(R.id.tNavigate);
         callBtn = findViewById(R.id.tCall);
 
@@ -251,8 +254,60 @@ public class TripActivity extends BaseActivity {
             }
         }
 
+        // Handing back is offered right up until he collects. After that it is gone - what is
+        // in his bag has to be delivered, and that is a conversation with the desk.
+        boolean canHandBack = next != null && !CARRYING.contains(status()) && !"COMPLETED".equals(status());
+        Anim.show(handBack, canHandBack);
+
         paintOfflineNote();
         paintTimers();
+    }
+
+    private static final java.util.List<String> CARRYING =
+            java.util.Arrays.asList("PICKED", "EN_ROUTE_DROP", "AT_DROP", "COMPLETED", "REJECTED", "CANCELLED");
+
+    /**
+     * Asks why, then gives the job back.
+     *
+     * The reason is not optional: it is the only thing that tells whoever picks this up next
+     * whether to send another runner now or leave it until the morning.
+     */
+    private void askHandBack() {
+        final EditText input = new EditText(this);
+        input.setHint(R.string.hand_back_hint);
+
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.hand_back_title)
+                .setMessage(R.string.hand_back_msg)
+                .setView(input)
+                .setNegativeButton(R.string.cancel, null)
+                .setPositiveButton(R.string.save, (d, w) -> {
+                    String why = input.getText().toString().trim();
+                    if (why.length() < 3) {
+                        Toast.makeText(this, R.string.hand_back_need_reason, Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    sendHandBack(why);
+                })
+                .show();
+    }
+
+    private void sendHandBack(String why) {
+        handBack.setEnabled(false);
+        try {
+            JSONObject body = new JSONObject().put("reason", why).put("at", Clock.nowIso());
+            api.post("/api/runner/trip/" + tripId + "/handback", body, (ok, data, err) -> {
+                handBack.setEnabled(true);
+                if (!ok) {
+                    Toast.makeText(this, Api.text(err), Toast.LENGTH_LONG).show();
+                    return;
+                }
+                Toast.makeText(this, R.string.hand_back_done, Toast.LENGTH_LONG).show();
+                finish();
+            });
+        } catch (Exception e) {
+            handBack.setEnabled(true);
+        }
     }
 
     private void paintOfflineNote() {

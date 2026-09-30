@@ -19,6 +19,7 @@ const Attendance = require('../models/Attendance');
 const LocationPing = require('../models/LocationPing');
 const Photo = require('../models/Photo');
 const { auth, can } = require('../middleware/auth');
+const { queueFor, currentOf } = require('../services/dispatch');
 const { kmFromPings, cleanTrail, distanceM } = require('../services/geo');
 const { labelFor } = require('../services/dispatch');
 const { tripTat } = require('../services/tat');
@@ -199,6 +200,11 @@ router.get('/:runnerId', async (req, res, next) => {
             ? Math.round((Date.now() - new Date(sessions.find(s => s.inAt && !s.outAt).inAt)) / 60000) : 0)
       },
 
+      // The job he is on at this moment, and how many are stacked behind it. The dashboard
+      // could show where he had been and where he was sent, but never which of several jobs
+      // he is actually doing - which is the first thing the desk asks when the phone rings.
+      doing: date === istDay() ? await nowDoing(runner._id) : null,
+
       // Where he is right now. Only meaningful for today - on an older date the last ping of
       // that day is the honest answer instead, and the client is told which it got.
       live: liveMark(runner, pings, date),
@@ -375,6 +381,51 @@ function buildTimeline(sessions, trips, stops, att, photoNear) {
   rows.forEach((r, i) => { r.n = i + 1; });
   return rows;
 }
+
+/**
+ * What this runner is doing at this moment, and what is waiting behind it.
+ *
+ * Only for today - on an older date there is no "right now", and saying there is would be
+ * a guess dressed up as a fact.
+ */
+async function nowDoing(runnerId) {
+  const queue = await queueFor(runnerId);
+  if (!queue.length) return null;
+
+  const head = currentOf(queue);
+  if (!head) return null;
+
+  const full = await Trip.findById(head._id)
+    .populate('case', 'caseNo patientName reference')
+    .populate('pickupLocation dropLocation', 'name area').lean();
+  if (!full) return null;
+
+  const carrying = ['PICKED', 'EN_ROUTE_DROP', 'AT_DROP'].includes(full.status);
+  const target = carrying ? full.dropLocation : full.pickupLocation;
+
+  return {
+    tripNo: full.tripNo,
+    leg: LEG_WORDS[full.type] || full.type,
+    stage: STAGE_WORDS[full.status] || full.status,
+    heading: target ? target.name : '',
+    area: target ? target.area : '',
+    carrying,
+    what: full.case ? (full.case.patientName || full.case.reference || full.case.caseNo) : '',
+    since: full.acceptedAt || full.assignedAt,
+    waiting: queue.length - 1
+  };
+}
+
+const LEG_WORDS = {
+  SAMPLE_PICKUP: 'Sample pickup', BLOOD_DELIVERY: 'Blood delivery',
+  COLLECTION_SAMPLE: 'Collection sample', PAYMENT_COLLECT: 'Payment collect',
+  PACKAGE_DELIVER: 'Package deliver'
+};
+const STAGE_WORDS = {
+  ASSIGNED: 'Waiting to accept', ACCEPTED: 'Accepted', EN_ROUTE_PICKUP: 'Riding to pickup',
+  AT_PICKUP: 'At the pickup', PICKED: 'Collected, riding to drop',
+  EN_ROUTE_DROP: 'Riding to drop', AT_DROP: 'At the drop'
+};
 
 /** Where the rider marker goes, and whether it means "now" or "last seen that day". */
 function liveMark(runner, pings, date) {

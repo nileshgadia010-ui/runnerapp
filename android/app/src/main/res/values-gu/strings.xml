@@ -232,4 +232,12 @@
     <string name="queue_accepted">સ્વીકારેલું</string>
     <string name="queue_switched">બદલાઈ ગયું. હવે આ તમારું લાઈવ કામ છે.</string>
     <string name="queue_cannot_switch">પહેલાં જે સાથે છે તે પૂરું કરો.</string>
+    <string name="hand_back">આ કામ હું નહીં કરી શકું</string>
+    <string name="hand_back_title">કામ પાછું આપવું છે?</string>
+    <string name="hand_back_msg">ડેસ્કને દેખાશે અને બીજા કોઈને મોકલશે. કારણ લખો:</string>
+    <string name="hand_back_hint">બાઇક પંક્ચર, હોસ્પિટલે પછી બોલાવ્યું...</string>
+    <string name="hand_back_need_reason">કારણ લખો, જેથી ડેસ્ક બીજા કોઈને મોકલી શકે</string>
+    <string name="hand_back_done">પાછું આપી દીધું. ડેસ્ક બીજા કોઈને મોકલશે.</string>
+    <string name="hand_back_carrying">આ તમારી પાસે છે. પહેલાં પહોંચાડો, અથવા ડેસ્કને ફોન કરો.</string>
+    <string name="queue_head_many">તમારા માટે બીજાં પણ (%1$d)</string>
 </resources>

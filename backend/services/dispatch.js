@@ -31,11 +31,20 @@ const STAGE_FIELD = {
  * The desk can still set any of these explicitly, which is why the intermediate stages
  * remain valid targets rather than being deleted.
  */
+/*
+ * REJECTED is allowed right up until he has the thing in his hand.
+ *
+ * It used to be allowed only before accepting, which does not match how a shift goes: a
+ * runner accepts, sets off, and then the bike gives up or the hospital says come tomorrow.
+ * With no way to give the job back he either held it all day or the desk had to notice and
+ * cancel it. After PICKED it is deliberately NOT allowed - once a sample is in his bag it
+ * has to be delivered, and putting it down is a conversation with the desk, not a button.
+ */
 const NEXT = {
   ASSIGNED: ['ACCEPTED', 'REJECTED', 'CANCELLED'],
-  ACCEPTED: ['EN_ROUTE_PICKUP', 'AT_PICKUP', 'CANCELLED'],
-  EN_ROUTE_PICKUP: ['AT_PICKUP', 'CANCELLED'],
-  AT_PICKUP: ['PICKED', 'CANCELLED'],
+  ACCEPTED: ['EN_ROUTE_PICKUP', 'AT_PICKUP', 'REJECTED', 'CANCELLED'],
+  EN_ROUTE_PICKUP: ['AT_PICKUP', 'REJECTED', 'CANCELLED'],
+  AT_PICKUP: ['PICKED', 'REJECTED', 'CANCELLED'],
   PICKED: ['EN_ROUTE_DROP', 'AT_DROP', 'COMPLETED', 'CANCELLED'],
   EN_ROUTE_DROP: ['AT_DROP', 'COMPLETED', 'CANCELLED'],
   AT_DROP: ['COMPLETED', 'CANCELLED'],

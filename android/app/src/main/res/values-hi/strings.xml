@@ -232,4 +232,12 @@
     <string name="queue_accepted">Accept kiya hua</string>
     <string name="queue_switched">Badal diya. Ab yahi aapka live job hai.</string>
     <string name="queue_cannot_switch">Pehle jo saath me hai use pura karein.</string>
+    <string name="hand_back">Ye job main nahi kar sakta</string>
+    <string name="hand_back_title">Job wapas karein?</string>
+    <string name="hand_back_msg">Desk ko dikh jayega aur wo kisi aur ko bhej denge. Wajah likhein:</string>
+    <string name="hand_back_hint">Bike puncture, hospital ne baad me bulaya...</string>
+    <string name="hand_back_need_reason">Wajah likhein, taaki desk kisi aur ko bhej sake</string>
+    <string name="hand_back_done">Wapas kar diya. Desk kisi aur ko bhej dega.</string>
+    <string name="hand_back_carrying">Ye aapke paas hai. Pehle pahuchayein, ya desk ko call karein.</string>
+    <string name="queue_head_many">AAPKE LIYE AUR BHI HAI (%1$d)</string>
 </resources>

@@ -65,14 +65,34 @@ const Reports = (function () {
       F.stageLabel(r.type, r.status) + '</span></td>' +
       cell(r.accept) + cell(r.toPickup) + cell(r.pickupDwell) + cell(r.toDrop) + cell(r.dropDwell) +
       '<td class="num ' + (r.grade === 'breach' ? 't-breach' : r.grade === 'warn' ? 't-warn' : 't-ok') + '"><b>' + F.mins(r.total) + '</b></td>' +
-      '<td class="rowacts"><button class="btn btn--ghost btn--sm" data-trip="' + F.esc(r.tripNo) + '">Open</button>' +
+      '<td class="rowacts">' +
+      '<button class="btn btn--ghost btn--sm" data-open="' + r.id + '">Open</button>' +
+      (RUNNING.includes(r.status)
+        ? '<button class="btn btn--ghost btn--sm" data-stop="' + r.id + '" style="color:var(--crimson)">Cancel</button>'
+        : '') +
       UI.delBtn('trip', r.id, 'job ' + (r.tripNo || '')) + '</td></tr>').join('');
 
-    host.querySelectorAll('[data-trip]').forEach(b => b.addEventListener('click', async () => {
-      const list = await API.get('/api/trips', { from: document.getElementById('tripFrom').value, to: document.getElementById('tripTo').value });
-      const hit = list.find(t => t.tripNo === b.dataset.trip);
-      if (hit) Live.openTrip(hit._id);
-    }));
+    // Opens by id. It used to re-fetch the whole range and search it by trip number, so a
+    // job outside whatever that second call returned simply did nothing when clicked - a
+    // button that looks broken rather than one that says no.
+    host.querySelectorAll('[data-open]').forEach(b =>
+      b.addEventListener('click', () => Live.openTrip(b.dataset.open)));
+
+    host.querySelectorAll('[data-stop]').forEach(b =>
+      b.addEventListener('click', () => stopTrip(b.dataset.stop)));
+  }
+
+  const RUNNING = ['ASSIGNED', 'ACCEPTED', 'EN_ROUTE_PICKUP', 'AT_PICKUP', 'PICKED', 'EN_ROUTE_DROP', 'AT_DROP'];
+
+  async function stopTrip(tripId) {
+    const reason = prompt('Why is this job being cancelled?\n\nThe runner phone will stop asking for it.');
+    if (reason === null) return;
+    if (!reason.trim()) { toast('Write a reason so the desk knows why', 'error'); return; }
+    try {
+      await API.post('/api/trips/' + tripId + '/cancel', { reason: reason.trim() });
+      toast('Job cancelled', 'ok');
+      loadTrips();
+    } catch (e) { toast(e.message, 'error'); }
   }
 
   const cell = v => '<td class="num">' + F.mins(v) + '</td>';

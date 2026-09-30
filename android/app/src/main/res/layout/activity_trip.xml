@@ -297,7 +297,9 @@
         android:id="@+id/tAction"
         android:layout_width="match_parent"
         android:layout_height="62dp"
-        android:layout_margin="16dp"
+        android:layout_marginLeft="16dp"
+        android:layout_marginRight="16dp"
+        android:layout_marginTop="16dp"
         android:background="@drawable/btn_red"
         android:text="@string/next_step"
         android:textAllCaps="false"
@@ -305,4 +307,20 @@
         android:textSize="17sp"
         android:textStyle="bold"
         android:stateListAnimator="@null" />
+
+    <!-- Giving the job back. Deliberately plain and quiet: it is the rare case, and it
+         disappears entirely once he is carrying something. -->
+    <TextView
+        android:id="@+id/tHandBack"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:layout_marginBottom="16dp"
+        android:paddingTop="10dp"
+        android:paddingBottom="10dp"
+        android:gravity="center"
+        android:text="@string/hand_back"
+        android:textColor="@color/muted"
+        android:textSize="14sp"
+        android:visibility="gone" />
 </LinearLayout>

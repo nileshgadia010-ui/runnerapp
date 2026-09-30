@@ -602,8 +602,17 @@ public class HomeActivity extends BaseActivity {
                 String who = q.optString("patientName", "");
                 title.setText(q.optString("headline", "") + (who.isEmpty() ? "" : "  •  " + who));
 
+                // Where, and how far. With ten jobs in hand the distance is the whole basis
+                // for choosing - a list of names tells him nothing about which to do first.
                 JSONObject target = q.optJSONObject("target");
-                where.setText(target != null ? target.optString("name", "") : "");
+                String place = target != null ? target.optString("name", "") : "";
+                if (!q.isNull("targetKm")) {
+                    double km = q.optDouble("targetKm", 0);
+                    int eta = q.optInt("targetEtaMin", 0);
+                    place = place + "   " + String.format(java.util.Locale.ENGLISH, "%.1f km", km)
+                            + (eta > 0 ? " \u00b7 " + eta + " min" : "");
+                }
+                where.setText(place);
 
                 state.setText(getString(q.optBoolean("waiting", false)
                         ? R.string.queue_waiting : R.string.queue_accepted));
@@ -620,6 +629,11 @@ public class HomeActivity extends BaseActivity {
                 shown++;
             }
         }
+        // The heading carries the count, because "also waiting" reads very differently when
+        // it is one job and when it is nine.
+        ((TextView) findViewById(R.id.queueHead)).setText(
+                shown == 1 ? getString(R.string.queue_head)
+                           : getString(R.string.queue_head_many, shown));
         Anim.show(queueCard, shown > 0);
     }
 
