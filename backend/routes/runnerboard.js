@@ -13,6 +13,7 @@
  * Nothing here writes. It is a reading screen for the office.
  */
 const router = require('express').Router();
+const { bottleTotals } = require('../services/bottles');
 const Trip = require('../models/Trip');
 const User = require('../models/User');
 const Attendance = require('../models/Attendance');
@@ -181,7 +182,9 @@ router.get('/:runnerId', async (req, res, next) => {
           units: units.reduce((n, t) => n + (t.unitsCarried || 0), 0),
           deliveries: units.length,
           parcels: parcels.length,
-          samples: samples.length
+          samples: samples.length,
+          // Blood leg + package jobs, counted as bottles (see services/bottles.js).
+          ...bottleTotals(trips)
         };
       })(),
 

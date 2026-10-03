@@ -10,7 +10,7 @@ const SLA = require('../config/sla');
 const { auth, allow } = require('../middleware/auth');
 const { tripTat } = require('../services/tat');
 const { roadKm, etaMinutes, kmFromPings } = require('../services/geo');
-const { applyStage, labelFor, jobTitle, queueFor, currentOf, IN_HAND, ISTDate } = require('../services/dispatch');
+const { applyStage, labelFor, jobTitle, queueFor, currentOf, IN_HAND, ISTDate, ACTIVE, RANK, STAGE_FIELD, FLOW, PERISHABLE } = require('../services/dispatch');
 const realtime = require('../services/realtime');
 
 // Photos are held in memory just long enough to be written into MongoDB. Nothing touches
@@ -127,6 +127,15 @@ function tripCard(t, from) {
     remarks: t.case && t.case.remarks,
     pickup: place(t.pickupLocation),
     drop: place(t.dropLocation),
+    // Ids, so the phone can tell that three jobs start at the same blood centre and offer to
+    // collect them in one stop.
+    pickupId: t.pickupLocation ? String(t.pickupLocation._id || t.pickupLocation) : null,
+    dropId: t.dropLocation ? String(t.dropLocation._id || t.dropLocation) : null,
+    // How many bottles / bags the job is for. Blood delivery and package delivery both carry
+    // a count; it is what the runner confirms when he picks up.
+    bottles: (t.type === 'BLOOD_DELIVERY' || t.type === 'PACKAGE_DELIVER')
+      ? (t.unitsCarried || (t.case && t.case.unitsRequested) || null) : null,
+    queueOrder: t.queueOrder,
     target: place(target),
     targetKm: km,
     targetEtaMin: eta,
@@ -172,38 +181,36 @@ const istDayEnd = (dateStr) => new Date(istDayStart(dateStr).getTime() + 24 * 36
 // poll lands in the middle of a minute.
 router.get('/poll', async (req, res) => {
   const runner = req.user;
-  runner.lastSeenAt = new Date();
-  await runner.save();
+  // A plain update, not a document save: the poll runs every few seconds per phone and a
+  // full save re-validates and rewrites the whole user every time.
+  User.updateOne({ _id: runner._id }, { lastSeenAt: new Date() }).catch(() => {});
+
+  // Every job he holds, in his order, fully loaded in ONE query. This used to be four - the
+  // queue, then the head again, then the ringing one again, then all of them again - and on
+  // the free database tier each one is a noticeable wait.
+  const full = await Trip.find({ runner: runner._id, status: { $in: ACTIVE } })
+    .sort({ queueOrder: 1, assignedAt: 1 }).populate(POP).lean();
 
   // A runner can hold more than one job. Show him the one he is actually on - anything he
-  // has started beats anything merely assigned - and tell him how many are stacked behind it
-  // so the next job is never a surprise.
-  const queue = await queueFor(runner._id);
-  const head = currentOf(queue);
-  const trip = head
-    ? await Trip.findById(head._id).populate(POP).lean()
-    : null;
+  // has in his hand beats anything merely assigned - and list every one of them.
+  const trip = currentOf(full);
 
   // The one ringing is the oldest job he has not accepted yet - which is usually, but not
   // always, the one on screen.
-  const ringingRow = queue.find(t => t.status === 'ASSIGNED' && t.alertPending);
-  const ringing = ringingRow
-    ? await Trip.findById(ringingRow._id).populate(POP).lean()
-    : null;
+  const ringing = full.find(t => t.status === 'ASSIGNED' && t.alertPending) || null;
 
-  const full = await Trip.find({ _id: { $in: queue.map(t => t._id) } }).populate(POP).lean();
-  const byId = Object.fromEntries(full.map(t => [String(t._id), t]));
-  const cards = queue
-    .map(t => byId[String(t._id)])
-    .filter(Boolean)
-    .map(t => Object.assign(tripCard(t, runner.lastLocation), {
-      isCurrent: trip && String(t._id) === String(trip._id),
-      waiting: t.status === 'ASSIGNED'
-    }));
+  const cards = full.map((t, i) => Object.assign(tripCard(t, runner.lastLocation), {
+    isCurrent: !!trip && String(t._id) === String(trip._id),
+    waiting: t.status === 'ASSIGNED',
+    inHand: IN_HAND.includes(t.status),
+    position: i + 1
+  }));
 
   const date = ISTDate();
-  const att = await Attendance.findOne({ runner: runner._id, date }).lean();
-  const km = await kmToday(runner._id, date);
+  const [att, km] = await Promise.all([
+    Attendance.findOne({ runner: runner._id, date }).lean(),
+    kmTodayCached(runner._id, date)
+  ]);
 
   res.json({
     serverTime: new Date(),
@@ -230,10 +237,31 @@ router.get('/poll', async (req, res) => {
     // Everything he is holding, in the order he means to do it, so the phone can show the
     // list and let him pick a different one to head for.
     queue: cards,
-    queued: Math.max(0, queue.length - (trip ? 1 : 0)),
+    jobsInHand: cards.length,
+    queued: Math.max(0, cards.length - (trip ? 1 : 0)),
     config: { pingInterval: SLA.pingInterval, idlePingInterval: SLA.idlePingInterval, pollInterval: SLA.pollInterval }
   });
 });
+
+/*
+ * Today's kilometres, remembered for a minute.
+ *
+ * Working them out means reading every location point of the day and cleaning the trail -
+ * thousands of rows by the afternoon. The poll used to do that on every call, from two loops
+ * on the phone, every five seconds, which is a large part of why a stage change took so long
+ * to show: the server was busy recounting the morning's ride. A figure a minute old is fine
+ * for a counter on the home screen.
+ */
+const kmCache = new Map();
+async function kmTodayCached(runnerId, date) {
+  const key = String(runnerId) + '|' + date;
+  const hit = kmCache.get(key);
+  if (hit && Date.now() - hit.at < 60000) return hit.km;
+  const km = await kmToday(runnerId, date);
+  kmCache.set(key, { at: Date.now(), km });
+  if (kmCache.size > 500) kmCache.delete(kmCache.keys().next().value);
+  return km;
+}
 
 async function kmToday(runnerId, date) {
   const pings = await LocationPing.find({
@@ -253,6 +281,25 @@ router.get('/trip/active', async (req, res) => {
   const head = currentOf(await queueFor(req.user._id));
   const trip = head ? await Trip.findById(head._id).populate(POP).lean() : null;
   res.json(trip ? tripCard(trip, req.user.lastLocation) : null);
+});
+
+/*
+ * One particular job of his.
+ *
+ * The trip screen used to load "/trip/active" whatever job it was opened for - so tapping
+ * the Nirogyam job in his list opened the Sahyog job, because Sahyog was the one at the
+ * front. Every job in the list now opens itself.
+ */
+router.get('/trip/:id', async (req, res, next) => {
+  try {
+    let t = null;
+    try { t = await Trip.findById(req.params.id).populate(POP).lean(); }
+    catch (e) { if (e.name !== 'CastError') throw e; }
+    if (!t || String(t.runner) !== String(req.user._id)) return res.status(404).json({ error: 'Job not found' });
+    res.json(Object.assign(tripCard(t, req.user.lastLocation), {
+      closed: ['COMPLETED', 'REJECTED', 'CANCELLED'].includes(t.status)
+    }));
+  } catch (e) { next(e); }
 });
 
 /**
@@ -318,12 +365,14 @@ router.post('/trip/:id/focus', async (req, res, next) => {
       return res.json({ ok: true, unchanged: true });
     }
 
-    const perishable = t => ['SAMPLE_PICKUP', 'BLOOD_DELIVERY', 'COLLECTION_SAMPLE'].includes(t.type);
+    const perishable = t => PERISHABLE.includes(t.type);
 
-    if (current && IN_HAND.includes(current.status) && perishable(current)) {
+    // Switching between two things he is already carrying is fine - both are in his bag
+    // either way, and the order he drops them is his call.
+    if (current && IN_HAND.includes(current.status) && perishable(current) && !IN_HAND.includes(wanted.status)) {
       return res.status(409).json({
         error: 'Finish ' + (current.tripNo || 'the job in your hand') +
-          ' first - you are carrying a sample. Drop it, then this one opens up.'
+          ' first - you are carrying something that has to be delivered. Drop it, then this one opens up.'
       });
     }
 
@@ -459,6 +508,65 @@ function safeTime(raw) {
   return t;
 }
 
+// Hands this job's arrival photo to the jobs that were collected together with it and are
+// still without one.
+async function shareArrivalPhoto(trip) {
+  if (!trip || !trip.arrivalPhoto) return;
+  await Trip.updateMany(
+    { collectedWith: trip._id, runner: trip.runner, $or: [{ arrivalPhoto: null }, { arrivalPhoto: '' }] },
+    { $set: { arrivalPhoto: trip.arrivalPhoto } });
+}
+
+/*
+ * Moves one stage's time earlier, keeping the whole run in order: anything before it that is
+ * now later is pulled back to it, and anything after it that was stamped at the same moment
+ * (because it was inferred from it) moves with it.
+ */
+function moveEarlier(trip, stage, at) {
+  const f = STAGE_FIELD[stage];
+  if (!f) return false;
+  const old = trip[f] ? new Date(trip[f]).getTime() : null;
+  if (old !== null && at.getTime() >= old) return false;
+  trip[f] = at;
+  FLOW.slice(1).forEach(s => {
+    const g = STAGE_FIELD[s];
+    if (!g || g === f || !trip[g]) return;
+    const v = new Date(trip[g]).getTime();
+    if (RANK[s] < RANK[stage] && v > at.getTime()) trip[g] = at;
+    if (RANK[s] > RANK[stage] && old !== null && v === old) trip[g] = at;
+  });
+  return true;
+}
+
+// Fills in what a late replay knows and the trip does not. Returns true if anything changed.
+async function backfill(trip, body) {
+  let changed = false;
+  if (body.proofPhoto) {
+    if (body.stage === 'AT_PICKUP' && !trip.arrivalPhoto) { trip.arrivalPhoto = body.proofPhoto; changed = true; }
+    else if (body.stage !== 'AT_PICKUP' && !trip.proofPhoto) { trip.proofPhoto = body.proofPhoto; changed = true; }
+  }
+  if (body.units !== undefined && body.units !== null && body.units !== '' && !trip.unitsCarried) {
+    trip.unitsCarried = Number(body.units); changed = true;
+  }
+  if (body.amount !== undefined && body.amount !== null && body.amount !== '' && !trip.amountCollected) {
+    trip.amountCollected = Number(body.amount);
+    if (body.paymentMode) trip.paymentMode = body.paymentMode;
+    changed = true;
+  }
+  if (body.barcode && !trip.sampleBarcode) { trip.sampleBarcode = body.barcode; changed = true; }
+
+  // The real moment beats an inferred one. Only ever earlier, never later, so a replay
+  // cannot stretch a span that was already right - and never out of order (moveEarlier).
+  const at = body.at ? safeTime(body.at) : null;
+  const stamps = body.andPicked ? ['AT_PICKUP', 'PICKED'] : [body.stage];
+  if (at) stamps.forEach(s => { if (moveEarlier(trip, s, at)) changed = true; });
+  if (changed && trip.events) {
+    trip.events.push({ status: body.andPicked ? 'PICKED' : body.stage, at: at || new Date(),
+      note: 'Late upload from the phone', by: 'runner' });
+  }
+  return changed;
+}
+
 async function doStage(user, tripId, body) {
   const trip = await Trip.findById(tripId);
   if (!trip) return { error: 'Job not found', code: 404 };
@@ -469,14 +577,40 @@ async function doStage(user, tripId, body) {
     return { trip: tripCard(fresh, user.lastLocation), duplicate: !!duplicate };
   };
 
-  // Replaying the same stage after an offline sync is not an error - just report success.
-  if (trip.status === body.stage) return done(true);
+  // A job the desk took back. Say so plainly, so the phone drops it instead of retrying.
+  if (['CANCELLED', 'REJECTED'].includes(trip.status)) {
+    return { error: 'This job was ' + (trip.status === 'CANCELLED' ? 'cancelled by the desk' : 'given back') +
+      ' and is no longer yours', code: 409 };
+  }
 
-  // The arrival button also says "and I have it in my hand", so an offline retry of it can
-  // land when the trip has already moved past both. Treat that as the replay it is, rather
-  // than rejecting it as an illegal backwards move and leaving the phone stuck.
-  if (body.andPicked && ['PICKED', 'EN_ROUTE_DROP', 'AT_DROP', 'COMPLETED'].includes(trip.status)) {
+  /*
+   * A stage that is not ahead of where the trip already is: a late replay.
+   *
+   * The phone has two upload queues, and the arrival photo can land after the handover - or
+   * after the desk finished the job from the portal. That is not an error and must never be
+   * answered with one, or the phone gives up on it. Report success, and keep whatever the late
+   * press carried that the trip does not have yet: the arrival photo, the count, the cash, and
+   * the real time he arrived if all we had was a guess.
+   */
+  const target = body.andPicked ? 'PICKED' : body.stage;
+  if (RANK[trip.status] !== undefined && RANK[body.stage] !== undefined && RANK[target] <= RANK[trip.status]) {
+    if (await backfill(trip, body)) await trip.save();
+    await shareArrivalPhoto(trip);
     return done(true);
+  }
+
+  // "Reached, and I have it" on a trip already standing at the pickup (the desk set it, or an
+  // older build stopped there): the arrival part is already true, so file the picture against
+  // it and move on to the collection.
+  if (body.andPicked && trip.status === 'AT_PICKUP') {
+    if (await backfill(trip, Object.assign({}, body, { andPicked: false, stage: 'AT_PICKUP' }))) await trip.save();
+    await applyStage(trip, 'PICKED', {
+      lat: body.lat, lng: body.lng, note: body.note, barcode: body.barcode, units: body.units,
+      amount: body.amount, paymentMode: body.paymentMode, paymentRef: body.paymentRef,
+      at: safeTime(body.at), by: 'runner'
+    });
+    await shareArrivalPhoto(trip);
+    return done(false);
   }
 
   if (body.stage === 'COMPLETED' && trip.type === 'BLOOD_DELIVERY' && !body.proofPhoto && !trip.proofPhoto) {
@@ -526,6 +660,19 @@ async function doStage(user, tripId, body) {
     await applyStage(trip, 'PICKED', Object.assign({}, opts, { proofPhoto: undefined }));
   }
 
+  // Collected together with another job at the same counter: one photo was taken, for that
+  // one. Remember the link, and use that picture here - now if it has already arrived, or
+  // later, when it does (see shareArrivalPhoto), since the photo usually uploads after these.
+  if (body.withTrip) {
+    const other = await Trip.findById(body.withTrip).select('arrivalPhoto runner').lean();
+    if (other && String(other.runner) === String(user._id)) {
+      trip.collectedWith = other._id;
+      if (!trip.arrivalPhoto && other.arrivalPhoto) trip.arrivalPhoto = other.arrivalPhoto;
+      await trip.save();
+    }
+  }
+  await shareArrivalPhoto(trip);
+
   return done(false);
 }
 
@@ -539,6 +686,11 @@ router.post('/trip/:id/stage', upload.single('photo'), async (req, res, next) =>
       kind: 'PROOF', runner: req.user._id, trip: req.params.id,
       lat: req.body.lat, lng: req.body.lng
     });
+    // A picture was sent but could not be kept. Say "try again" rather than recording the
+    // stage without it - the phone still has the file and will resend it.
+    if (req.file && req.file.buffer && req.file.buffer.length && !proofPhoto) {
+      return res.status(503).json({ error: 'The photo could not be saved just now. It will be sent again.', retry: true });
+    }
     const result = await doStage(req.user, req.params.id, {
       stage: req.body.stage,
       lat: req.body.lat, lng: req.body.lng, note: req.body.note,
@@ -546,7 +698,8 @@ router.post('/trip/:id/stage', upload.single('photo'), async (req, res, next) =>
       amount: req.body.amount, paymentMode: req.body.paymentMode, paymentRef: req.body.paymentRef,
       at: req.body.at,
       // Sent as a form field, so it arrives as the string "1" rather than a boolean.
-      andPicked: req.body.andPicked === '1' || req.body.andPicked === true,
+      andPicked: req.body.andPicked === '1' || req.body.andPicked === true || req.body.andPicked === 'true',
+      withTrip: req.body.withTrip,
       proofPhoto
     });
     if (result.error) return res.status(result.code || 400).json({ error: result.error });
@@ -600,7 +753,11 @@ async function punchOut(user, body) {
   const att = await Attendance.findOne({ runner: user._id, date });
   const open = att && att.sessions.find(s => s.inAt && !s.outAt);
   if (!open) return { error: 'You are not punched in' };
-  if (user.activeTrip) return { error: 'Finish your running job before punching out' };
+  // Read it fresh: in an offline batch the job's "handed over" is applied a moment earlier in
+  // the same request, on a different copy of this user, and the copy the request started with
+  // would still say he is on a job.
+  const fresh = await User.findById(user._id).select('activeTrip').lean();
+  if (fresh && fresh.activeTrip) return { error: 'Finish your running job before punching out' };
 
   const odo = Number(body.odo || 0);
   if (!odo) return { error: 'Enter the bike meter reading to close the day' };
@@ -713,7 +870,9 @@ router.post('/sync', async (req, res) => {
         results.push({ id, ok: false, error: 'Unknown action' });
       }
     } catch (e) {
-      results.push({ id, ok: false, error: e.message });
+      // A refusal with a reason (e.status) is final. Anything else - the database blinked,
+      // a timeout - is not the runner's fault, and the phone must keep it and try again.
+      results.push({ id, ok: false, error: e.message, retry: !e.status });
     }
   }
 

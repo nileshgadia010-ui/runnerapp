@@ -21,7 +21,10 @@ const API = (function () {
   async function request(method, url, body) {
     const opts = { method, headers: {} };
     if (token()) opts.headers.Authorization = 'Bearer ' + token();
-    if (body !== undefined) {
+    if (body instanceof FormData) {
+      // Multipart: the browser writes its own Content-Type with the boundary.
+      opts.body = body;
+    } else if (body !== undefined) {
       opts.headers['Content-Type'] = 'application/json';
       opts.body = JSON.stringify(body);
     }
@@ -55,6 +58,8 @@ const API = (function () {
     get: (u, p) => request('GET', u + (p ? '?' + qs(p) : '')),
     post: (u, b) => request('POST', u, b || {}),
     put: (u, b) => request('PUT', u, b || {}),
+    // Fields and a file in one request - used where the desk attaches a photo.
+    form: (u, fd) => request('POST', u, fd),
     del: u => request('DELETE', u)
   };
 })();

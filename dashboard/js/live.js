@@ -589,9 +589,10 @@ const Live = (function () {
       '<span class="chip chip--blue">' + F.jobTitle(t.type) + '</span>' +
       (t.case ? UI.priorityChip(t.case.priority) : '') +
       '<span class="chip">' + F.stageLabel(t.type, t.status) + '</span></div>' +
+      Complete.badge(t) +
 
       '<div class="card" style="margin-bottom:14px"><div class="card__body">' +
-      '<h3 style="font-size:15px;margin-bottom:6px">' + F.esc(t.case ? t.case.patientName : '') + '</h3>' +
+      '<h3 style="font-size:15px;margin-bottom:6px">' + F.esc(t.case ? (t.case.patientName || t.case.reference || t.case.caseNo || '') : '') + '</h3>' +
       // Same rule as everywhere else: escape the values, not the separator.
       '<div style="color:var(--muted)">' +
       [t.case && t.case.patientAge, t.case && t.case.patientGender,
@@ -614,6 +615,12 @@ const Live = (function () {
       '<h4 style="margin:16px 0 4px">Time taken</h4>' +
       '<div class="grid-3">' + tatGrid + '</div>' +
 
+      (t.arrivalPhoto
+        ? '<h4 style="margin:16px 0 8px">At the pickup</h4>' +
+          '<img src="' + F.esc(t.arrivalPhoto) + '" class="proof-shot" ' +
+          'onclick="UI.photo(\'' + F.esc(t.arrivalPhoto) + '\', \'At the pickup\')" ' +
+          'onerror="this.outerHTML = \'<p class=&quot;proof-gone&quot;>This photo is no longer on the server.</p>\'">'
+        : '') +
       (t.proofPhoto
         ? '<h4 style="margin:16px 0 8px">Handover proof</h4>' +
           '<img src="' + F.esc(t.proofPhoto) + '" class="proof-shot" ' +
@@ -622,16 +629,27 @@ const Live = (function () {
         : '') +
       (t.sampleBarcode ? '<p style="margin-top:12px">Sample barcode: <span class="mono">' + F.esc(t.sampleBarcode) + '</span></p>' : '') +
       (t.runnerNote ? '<p style="margin-top:8px;color:var(--muted)">Runner note: ' + F.esc(t.runnerNote) + '</p>' : '') +
+      (t.deskNote ? '<p style="margin-top:8px;color:var(--muted)">Desk note: ' + F.esc(t.deskNote) + '</p>' : '') +
+      (t.unitsCarried ? '<p style="margin-top:8px">Bottles / units: <b>' + t.unitsCarried + '</b></p>' : '') +
 
       '<h4 style="margin:18px 0 10px">Stage by stage</h4><ul class="tl">' + timeline + '</ul>';
 
+    const canFinish = API.can('overrideStages');
     const foot = live
       ? (t.status === 'ASSIGNED' ? '<button class="btn btn--ghost" id="repingBtn">Ring the phone again</button>' : '') +
         '<button class="btn btn--ghost" id="reassignBtn">Hand to another runner</button>' +
+        (canFinish ? '<button class="btn" id="completeBtn">Complete from portal</button>' : '') +
         '<button class="btn btn--red" id="cancelTripBtn">Cancel trip</button>'
-      : '<button class="btn btn--ghost" id="replayBtn">Show route on map</button>';
+      : '<button class="btn btn--ghost" id="replayBtn">Show route on map</button>' +
+        (canFinish && t.status === 'COMPLETED' ? '<button class="btn btn--ghost" id="completeBtn">Correct time / photo</button>' : '');
 
     UI.openDrawer('Trip ' + t.tripNo, body, foot);
+
+    const completeBtn = document.getElementById('completeBtn');
+    if (completeBtn) completeBtn.addEventListener('click', () => Complete.open({
+      trip: t,
+      onDone: () => { refresh(); if (window.Cases && Cases.load) Cases.load().catch(() => {}); }
+    }));
 
     const reping = document.getElementById('repingBtn');
     if (reping) reping.addEventListener('click', async () => {

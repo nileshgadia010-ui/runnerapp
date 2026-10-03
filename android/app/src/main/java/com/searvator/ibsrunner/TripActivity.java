@@ -56,13 +56,15 @@ public class TripActivity extends BaseActivity {
     private TextView headline, patient, meta, ward, pickupName, pickupSub, dropName, dropSub,
             stageText, stageTimer, totalTimer, remarks, barcodeLine, distanceLine, offlineNote, stepLine;
     private Button actionBtn, navBtn, callBtn;
-    private TextView handBack;
+    private TextView handBack, others;
+    private Prefs prefs;
 
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
         api = new Api(this);
         queue = new SyncQueue(this);
+        prefs = new Prefs(this);
         Clock.restore(this);
         setContentView(R.layout.activity_trip);
 
@@ -87,6 +89,9 @@ public class TripActivity extends BaseActivity {
         actionBtn = findViewById(R.id.tAction);
         handBack = findViewById(R.id.tHandBack);
         handBack.setOnClickListener(v -> askHandBack());
+        others = findViewById(R.id.tOthers);
+        // Back to the home list, where every job is shown with a button to switch to it.
+        others.setOnClickListener(v -> finish());
         navBtn = findViewById(R.id.tNavigate);
         callBtn = findViewById(R.id.tCall);
 
@@ -151,11 +156,21 @@ public class TripActivity extends BaseActivity {
         } catch (Exception ignored) { }
     }
 
+    /*
+     * Loads THIS job - the one he tapped.
+     *
+     * It used to load "/trip/active", i.e. whichever job was at the front of his queue, no
+     * matter which row he had tapped. With three jobs that meant tapping Nirogyam opened
+     * Sahyog. Now the screen asks for its own job by id.
+     */
     private void load() {
-        api.get("/api/runner/trip/active", (ok, data, err) -> {
-            if (!ok || data == null || data.optString("id").isEmpty()) {
+        String path = tripId == null || tripId.isEmpty()
+                ? "/api/runner/trip/active" : "/api/runner/trip/" + tripId;
+        api.get(path, (ok, data, err) -> {
+            boolean closed = ok && data != null && data.optBoolean("closed", false);
+            if (!ok || data == null || data.optString("id").isEmpty() || closed) {
                 // Offline? Keep whatever we already drew instead of throwing him out.
-                if (trip != null) { paintOfflineNote(); return; }
+                if (!ok && trip != null) { paintOfflineNote(); return; }
                 Toast.makeText(this, ok ? getString(R.string.this_job_finished) : Api.text(err), Toast.LENGTH_SHORT).show();
                 finish();
                 return;
@@ -260,7 +275,49 @@ public class TripActivity extends BaseActivity {
         Anim.show(handBack, canHandBack);
 
         paintOfflineNote();
+        paintOthers();
         paintTimers();
+    }
+
+    /** The jobs in his queue that are not this one, from the last poll the phone saw. */
+    private java.util.List<JSONObject> otherJobs() {
+        java.util.List<JSONObject> out = new java.util.ArrayList<>();
+        try {
+            String raw = prefs.lastPoll();
+            if (raw == null || raw.isEmpty()) return out;
+            org.json.JSONArray q = new JSONObject(raw).optJSONArray("queue");
+            if (q == null) return out;
+            java.util.Set<String> done = queue.pendingFinished();
+            for (int i = 0; i < q.length(); i++) {
+                JSONObject o = q.optJSONObject(i);
+                if (o == null) continue;
+                String id = o.optString("id");
+                if (id.equals(tripId) || done.contains(id)) continue;
+                out.add(o);
+            }
+        } catch (Exception ignored) { }
+        return out;
+    }
+
+    private void paintOthers() {
+        java.util.List<JSONObject> list = otherJobs();
+        if (list.isEmpty()) { others.setVisibility(View.GONE); return; }
+        StringBuilder sb = new StringBuilder(list.size() == 1
+                ? getString(R.string.others_head_one)
+                : getString(R.string.others_head_many, list.size()));
+        for (JSONObject o : list) {
+            sb.append("\n\u2022 ").append(route(o));
+        }
+        others.setText(sb.toString());
+        others.setVisibility(View.VISIBLE);
+    }
+
+    /** "Praneta Blood Centre → Sahyog Hospital" - the two names that tell jobs apart. */
+    static String route(JSONObject o) {
+        JSONObject p = o.optJSONObject("pickup"), d = o.optJSONObject("drop");
+        String a = p != null ? p.optString("name", "") : "";
+        String b = d != null ? d.optString("name", "") : "";
+        return a + " \u2192 " + b;
     }
 
     private static final java.util.List<String> CARRYING =
@@ -685,6 +742,24 @@ public class TripActivity extends BaseActivity {
             askPayment();
             return;
         }
+        if ("PACKAGE_DELIVER".equals(type)) {
+            // Bottles from a blood centre travel as a package job, and the count is the number
+            // the office asks for at the end of the day - so he confirms it here.
+            final EditText input = new EditText(this);
+            input.setHint(R.string.bottles_hint);
+            input.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+            int expected = trip.optInt("bottles", 0);
+            if (expected > 0) { input.setText(String.valueOf(expected)); input.setSelection(input.getText().length()); }
+            new AlertDialog.Builder(this)
+                    .setTitle(R.string.bottles_title)
+                    .setView(input)
+                    .setCancelable(false)
+                    .setPositiveButton(R.string.save, (d, w) ->
+                            arrive(null, input.getText().toString().trim()))
+                    .setNegativeButton(R.string.skip, (d, w) -> arrive(null, null))
+                    .show();
+            return;
+        }
         if ("BLOOD_DELIVERY".equals(type)) {
             final EditText input = new EditText(this);
             input.setHint(R.string.units_hint);
@@ -749,12 +824,79 @@ public class TripActivity extends BaseActivity {
                 paint();
                 return;
             }
-            // Hold on to it. The service retries until it lands.
-            queue.addPhotoStage(tripId, "AT_PICKUP", sent, shot == null ? "" : shot.getAbsolutePath());
             pendingAmount = null;
             pendingMode = null;
+            if (!Api.isNetwork(err)) {
+                // The server said no for a real reason (the desk cancelled it, it is not his).
+                // Queuing it would only keep the screen at "collected" on a dead job.
+                localStatus = null;
+                localStatusAt = null;
+                if (!isFinishing()) Toast.makeText(this, Api.text(err), Toast.LENGTH_LONG).show();
+                load();
+                return;
+            }
+            // Hold on to it. The service retries until it lands.
+            queue.addPhotoStage(tripId, "AT_PICKUP", sent, shot == null ? "" : shot.getAbsolutePath());
             paintOfflineNote();
+            DutyService.kick(this);
         });
+
+        offerCollectTogether(l);
+    }
+
+    /**
+     * Three deliveries from the same blood centre are one stop, not three.
+     *
+     * When he reaches a place where other jobs of his also start, ask once whether he has
+     * picked those up too. Each one he ticks is marked "reached and collected" with the same
+     * moment and place, and the server files this job's photo against them - so he takes one
+     * picture, not three, and the desk sees all three in his bag at once.
+     */
+    private void offerCollectTogether(final Location l) {
+        final String here = trip.optString("pickupId", "");
+        if (here.isEmpty()) return;
+
+        final java.util.List<JSONObject> same = new java.util.ArrayList<>();
+        for (JSONObject o : otherJobs()) {
+            String st = o.optString("status");
+            boolean before = "ASSIGNED".equals(st) || "ACCEPTED".equals(st) || "EN_ROUTE_PICKUP".equals(st);
+            if (before && here.equals(o.optString("pickupId"))) same.add(o);
+        }
+        if (same.isEmpty() || isFinishing()) return;
+
+        final String[] labels = new String[same.size()];
+        final boolean[] picked = new boolean[same.size()];
+        for (int i = 0; i < same.size(); i++) {
+            JSONObject o = same.get(i);
+            JSONObject d = o.optJSONObject("drop");
+            int b = o.optInt("bottles", 0);
+            labels[i] = "\u2192 " + (d != null ? d.optString("name", "") : "") +
+                    (b > 0 ? "  (" + b + ")" : "") + "   " + o.optString("tripNo", "");
+            picked[i] = true;
+        }
+        JSONObject p = trip.optJSONObject("pickup");
+        String place = p != null ? p.optString("name", "") : "";
+
+        new AlertDialog.Builder(this)
+                .setTitle(getString(R.string.collect_together_title, place))
+                .setMultiChoiceItems(labels, picked, (d, which, on) -> picked[which] = on)
+                .setNegativeButton(R.string.collect_together_no, null)
+                .setPositiveButton(R.string.collect_together_yes, (d, w) -> {
+                    int n = 0;
+                    double lat = l != null ? l.getLatitude() : 0, lng = l != null ? l.getLongitude() : 0;
+                    String note = getString(R.string.collect_together_note, trip.optString("tripNo", ""));
+                    for (int i = 0; i < same.size(); i++) {
+                        if (!picked[i]) continue;
+                        queue.addStageFull(same.get(i).optString("id"), "AT_PICKUP", lat, lng,
+                                null, note, true, tripId);
+                        n++;
+                    }
+                    if (n > 0) {
+                        Toast.makeText(this, getString(R.string.collect_together_done, n), Toast.LENGTH_LONG).show();
+                        DutyService.kick(this);
+                    }
+                })
+                .show();
     }
 
     /**
@@ -795,7 +937,21 @@ public class TripActivity extends BaseActivity {
             actionBtn.setEnabled(false);
             actionBtn.setText(R.string.uploading_photo);
             api.postPhoto("/api/runner/trip/" + tripId + "/stage", fields, photo, (ok, data, err) -> {
+                if (!ok && Api.isNetwork(err)) {
+                    // No network, or the server took too long. The job IS done - he is holding
+                    // the empty box - so keep the photo on the phone and let the service push
+                    // it, instead of keeping him standing at the counter retrying. The home
+                    // screen shows it as "finished - uploading" until it lands.
+                    queue.addPhotoStage(tripId, stage, fields, photo.getAbsolutePath());
+                    DutyService.kick(this);
+                    Toast.makeText(this, R.string.photo_saved_uploading, Toast.LENGTH_LONG).show();
+                    finish();
+                    return;
+                }
                 if (!ok) {
+                    // He may have pressed back during a long upload; a dialog on a closed
+                    // screen crashes the app.
+                    if (isFinishing() || isDestroyed()) return;
                     actionBtn.setEnabled(true);
                     actionBtn.setText(R.string.btn_take_photo);
                     new AlertDialog.Builder(this)
@@ -841,9 +997,15 @@ public class TripActivity extends BaseActivity {
 
                 if (Api.isNetwork(err)) {
                     // Keep the screen where the runner put it and let the queue carry it.
-                    queue.addStage(tripId, stage, lat, lng, barcode, units, null);
+                    // Everything he entered goes into the queue - the amount and mode too,
+                    // which the plain version could not carry.
+                    queue.addStageMap(tripId, stage, fields);
+                    pendingAmount = null;
+                    pendingMode = null;
                     paintOfflineNote();
+                    DutyService.kick(this);
                     Toast.makeText(this, R.string.saved_on_phone, Toast.LENGTH_SHORT).show();
+                    if ("COMPLETED".equals(stage)) { finish(); return; }
                 } else {
                     // A real refusal from the server - roll the screen back and say why.
                     localStatus = null;

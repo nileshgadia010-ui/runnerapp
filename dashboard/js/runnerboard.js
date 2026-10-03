@@ -162,9 +162,11 @@ const RunnerBoard = (function () {
       tiles.push(stat('money', I.cash, 'Collection', money(h.amount),
         h.payments + (h.payments === 1 ? ' payment' : ' payments') + (modes ? ' - ' + modes : '')));
     }
-    if (h.deliveries) {
-      tiles.push(stat('units', I.drop, 'Blood delivered', h.units || h.deliveries,
-        (h.units ? 'units over ' : '') + h.deliveries + (h.deliveries === 1 ? ' delivery' : ' deliveries')));
+    // Bottles: the blood leg of a case and a "Deliver package" from a blood centre are both
+    // bottles in a box, so they are counted together - that is the number the office asks for.
+    if (h.bottleJobs) {
+      tiles.push(stat('units', I.drop, 'Bottles delivered', h.bottles,
+        'over ' + h.bottleJobs + (h.bottleJobs === 1 ? ' delivery' : ' deliveries')));
     }
     if (h.samples) {
       tiles.push(stat('sample', I.tube, 'Samples brought in', h.samples,

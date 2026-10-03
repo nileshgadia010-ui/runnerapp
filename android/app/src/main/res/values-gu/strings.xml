@@ -226,7 +226,7 @@
     <string name="photo_at_place">અહીં ફોટો લેવો જરૂરી છે</string>
     <string name="arrival_photo_saved">ફોટો સેવ થયો. સિગ્નલ આવતાં અપલોડ થશે.</string>
     <string name="photo_waiting">%1$d ફોટો અપલોડ થવાનો બાકી છે</string>
-    <string name="queue_head">તમારા માટે બીજું પણ છે</string>
+    <string name="queue_head">મારા બધા કામ</string>
     <string name="queue_do_this">આ કરો</string>
     <string name="queue_waiting">તમે સ્વીકારો તેની રાહ</string>
     <string name="queue_accepted">સ્વીકારેલું</string>
@@ -239,5 +239,19 @@
     <string name="hand_back_need_reason">કારણ લખો, જેથી ડેસ્ક બીજા કોઈને મોકલી શકે</string>
     <string name="hand_back_done">પાછું આપી દીધું. ડેસ્ક બીજા કોઈને મોકલશે.</string>
     <string name="hand_back_carrying">આ તમારી પાસે છે. પહેલાં પહોંચાડો, અથવા ડેસ્કને ફોન કરો.</string>
-    <string name="queue_head_many">તમારા માટે બીજાં પણ (%1$d)</string>
+    <string name="queue_head_many">મારા બધા કામ (%1$d)</string>
+    <string name="queue_now">હમણાં આ ચાલે છે</string>
+    <string name="queue_in_hand">તમારી પાસે છે</string>
+    <string name="queue_uploading">પૂરું થયું - અપલોડ થાય છે</string>
+    <string name="others_head_one">તમારી પાસે 1 બીજું કામ છે. બધું જોવા દબાવો.</string>
+    <string name="others_head_many">તમારી પાસે %1$d બીજાં કામ છે. બધું જોવા દબાવો.</string>
+    <string name="collect_together_title">%1$s થી આ પણ લઈ લો?</string>
+    <string name="collect_together_yes">પસંદ કરેલા લીધા</string>
+    <string name="collect_together_no">હમણાં નહીં</string>
+    <string name="collect_together_note">%1$s સાથે લીધું</string>
+    <string name="collect_together_done">%1$d બીજાં કામ \"લીધું\" થયાં</string>
+    <string name="bottles_title">બોટલ / બોક્સ</string>
+    <string name="bottles_hint">કેટલા લઈ જાઓ છો?</string>
+    <string name="photo_saved_uploading">ફોનમાં સેવ થયું. નેટવર્ક આવતાં જ ફોટો અપલોડ થશે.</string>
+    <string name="note_jobs_count">%1$d કામ</string>
 </resources>

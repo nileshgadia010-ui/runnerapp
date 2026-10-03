@@ -226,7 +226,7 @@
     <string name="photo_at_place">A photo is needed here</string>
     <string name="arrival_photo_saved">Photo saved. It will upload when there is signal.</string>
     <string name="photo_waiting">%1$d photo waiting to upload</string>
-    <string name="queue_head">ALSO WAITING FOR YOU</string>
+    <string name="queue_head">MY JOBS</string>
     <string name="queue_do_this">Do this one</string>
     <string name="queue_waiting">Waiting for you to accept</string>
     <string name="queue_accepted">Accepted</string>
@@ -239,5 +239,19 @@
     <string name="hand_back_need_reason">Please say why, so the desk can send someone else</string>
     <string name="hand_back_done">Given back. The desk can send someone else.</string>
     <string name="hand_back_carrying">You are already carrying this one. Deliver it, or call the desk.</string>
-    <string name="queue_head_many">ALSO WAITING FOR YOU (%1$d)</string>
+    <string name="queue_head_many">MY JOBS (%1$d)</string>
+    <string name="queue_now">DOING NOW</string>
+    <string name="queue_in_hand">IN YOUR BAG</string>
+    <string name="queue_uploading">FINISHED - UPLOADING</string>
+    <string name="others_head_one">You have 1 more job. Tap to see all.</string>
+    <string name="others_head_many">You have %1$d more jobs. Tap to see all.</string>
+    <string name="collect_together_title">Collect these from %1$s too?</string>
+    <string name="collect_together_yes">Collect selected</string>
+    <string name="collect_together_no">Not now</string>
+    <string name="collect_together_note">Collected together with %1$s</string>
+    <string name="collect_together_done">%1$d more job(s) marked as collected</string>
+    <string name="bottles_title">Bottles / boxes</string>
+    <string name="bottles_hint">How many are you taking?</string>
+    <string name="photo_saved_uploading">Saved on your phone. The photo will upload as soon as there is network.</string>
+    <string name="note_jobs_count">%1$d jobs</string>
 </resources>

@@ -1,4 +1,5 @@
 const router = require('express').Router();
+const { bottlesOf, bottleTotals } = require('../services/bottles');
 const Trip = require('../models/Trip');
 const Case = require('../models/Case');
 const User = require('../models/User');
@@ -24,7 +25,9 @@ router.get('/today', async (req, res) => {
     Trip.find({ status: { $nin: ['COMPLETED', 'REJECTED', 'CANCELLED'] } }).lean(),
     User.find({ role: 'runner', active: true }).lean()
   ]);
-  const doneToday = await Trip.find({ completedAt: { $gte: start } }).lean();
+  const doneToday = await Trip.find({ completedAt: { $gte: start } })
+    .populate('case', 'unitsRequested').lean();
+  const bt = bottleTotals(doneToday);
   const tats = doneToday.map(t => tripTat(t));
 
   res.json({
@@ -36,6 +39,8 @@ router.get('/today', async (req, res) => {
     runnersOffDuty: runners.filter(r => r.dutyState === 'OFF_DUTY').length,
     runnersOnBreak: runners.filter(r => r.dutyState === 'BREAK').length,
     completedToday: doneToday.length,
+    bottlesToday: bt.bottles,
+    bottleJobsToday: bt.bottleJobs,
     avgTatToday: avg(tats.map(t => t.totalMinutes).filter(v => v !== null)),
     breachedToday: tats.filter(t => t.worst === 'breach').length,
     liveBreaches: activeTrips.map(t => tripTat(t)).filter(t => t.worst === 'breach').length
@@ -62,7 +67,7 @@ function tatQuery(req) {
   if (req.query.type) q.type = req.query.type;
   return Trip.find(q)
     .populate('runner', 'name empCode')
-    .populate('case', 'caseNo patientName priority hospital')
+    .populate('case', 'caseNo patientName reference priority hospital unitsRequested')
     .populate('pickupLocation dropLocation', 'name area')
     .sort({ assignedAt: -1 }).lean();
 }
@@ -148,6 +153,9 @@ router.get('/tat', async (req, res) => {
       status: t.status,
       assignedAt: t.assignedAt,
       completedAt: t.completedAt,
+      closedVia: t.closedVia || '',
+      closedByName: t.closedByName || '',
+      bottles: bottlesOf(t),
       accept: tat.parts.accept.value,
       toPickup: tat.parts.toPickup.value,
       pickupDwell: tat.parts.pickupDwell.value,
@@ -167,6 +175,9 @@ router.get('/tat', async (req, res) => {
       completed: done.length,
       rejected: rows.filter(r => r.status === 'REJECTED').length,
       breached: rows.filter(r => r.grade === 'breach').length,
+      bottles: rows.reduce((n, r) => n + (r.bottles || 0), 0),
+      bottleJobs: rows.filter(r => r.bottles > 0).length,
+      fromPortal: rows.filter(r => r.closedVia === 'PORTAL').length,
       onTimePercent: done.length ? Math.round((done.filter(r => r.grade !== 'breach').length / done.length) * 100) : null,
       avgAccept: avg(done.map(r => r.accept).filter(v => v !== null)),
       avgToPickup: avg(done.map(r => r.toPickup).filter(v => v !== null)),

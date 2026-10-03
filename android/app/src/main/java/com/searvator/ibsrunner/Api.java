@@ -83,7 +83,12 @@ public class Api {
             String err = null;
             try {
                 out = call(method, path, body);
-                if (out != null && out.has("__error")) { err = out.optString("__error"); out = null; }
+                if (out != null && out.has("__error")) {
+                    // A server that is restarting or overloaded is a network problem from the
+                    // runner's point of view: keep the press and send it again.
+                    err = (out.optInt("__code", 0) >= 500 ? NET : "") + out.optString("__error");
+                    out = null;
+                }
             } catch (Exception e) {
                 out = null;
                 err = friendly(ctx, e);
@@ -124,9 +129,10 @@ public class Api {
         // Keep the app's idea of the real time anchored to the server.
         if (json.has("serverTime")) Clock.syncFromServer(ctx, json.optString("serverTime"));
 
-        if (code == 401) return new JSONObject().put("__error", "__auth");
+        if (code == 401) return new JSONObject().put("__error", "__auth").put("__code", 401);
         if (code >= 400) return new JSONObject().put("__error",
-                json.optString("error", LocaleHelper.apply(ctx).getString(R.string.server_refused, code)));
+                json.optString("error", LocaleHelper.apply(ctx).getString(R.string.server_refused, code)))
+                .put("__code", code).put("__retry", json.optBoolean("retry", false));
         return json;
     }
 
@@ -139,7 +145,10 @@ public class Api {
             String err = null;
             try {
                 out = photoCall(path, fields, photo);
-                if (out != null && out.has("__error")) { err = out.optString("__error"); out = null; }
+                if (out != null && out.has("__error")) {
+                    err = (Api.isFinal(out) ? "" : NET) + out.optString("__error");
+                    out = null;
+                }
             } catch (Exception e) {
                 err = friendly(ctx, e);
             }
@@ -196,8 +205,24 @@ public class Api {
         JSONObject json = new JSONObject(text == null || text.isEmpty() ? "{}" : text);
         if (json.has("serverTime")) Clock.syncFromServer(ctx, json.optString("serverTime"));
         if (code >= 400) return new JSONObject().put("__error",
-                json.optString("error", LocaleHelper.apply(ctx).getString(R.string.upload_failed)));
+                json.optString("error", LocaleHelper.apply(ctx).getString(R.string.upload_failed)))
+                .put("__code", code).put("__retry", json.optBoolean("retry", false));
         return json;
+    }
+
+    /**
+     * Is this error the server's final word on the request?
+     *
+     * 400/403/404/409 and friends are: the job was cancelled, it is not his, the press makes
+     * no sense. 401 (signed out), 408/429 (slow down) and every 5xx (restarting, database
+     * hiccup) are not - the same request will work later, so it must be kept.
+     */
+    public static boolean isFinal(JSONObject err) {
+        if (err == null) return false;
+        int code = err.optInt("__code", 0);
+        if (err.optBoolean("__retry", false)) return false;
+        if (code == 401 || code == 408 || code == 429 || code >= 500 || code == 0) return false;
+        return code >= 400;
     }
 
     private static String readAll(InputStream in) throws Exception {

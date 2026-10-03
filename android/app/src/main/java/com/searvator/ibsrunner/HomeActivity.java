@@ -253,6 +253,25 @@ public class HomeActivity extends BaseActivity {
                 : "BREAK".equals(duty) ? R.drawable.chip_amber : R.drawable.chip_grey);
 
         JSONObject trip = data.optJSONObject("trip");
+
+        // A job he has already finished on this phone, whose "handed over" is still uploading,
+        // must not sit at the top as if it were still to do. Show the next real one instead.
+        java.util.Set<String> finishing = queue.pendingFinished();
+        org.json.JSONArray all = data.optJSONArray("queue");
+        if (trip != null && finishing.contains(trip.optString("id"))) {
+            trip = null;
+            if (all != null) {
+                JSONObject firstInHand = null, first = null;
+                for (int i = 0; i < all.length(); i++) {
+                    JSONObject q = all.optJSONObject(i);
+                    if (q == null || finishing.contains(q.optString("id"))) continue;
+                    if (first == null) first = q;
+                    if (firstInHand == null && q.optBoolean("inHand", false)) firstInHand = q;
+                }
+                trip = firstInHand != null ? firstInHand : first;
+            }
+        }
+
         if (trip != null) {
             boolean wasHidden = jobCard.getVisibility() != View.VISIBLE;
             activeTripId = trip.optString("id");
@@ -262,10 +281,14 @@ public class HomeActivity extends BaseActivity {
 
             jobTitle.setText(trip.optString("headline") + "  •  " + trip.optString("patientName"));
 
-            JSONObject target = trip.optJSONObject("target");
-            String where = target != null ? target.optString("name") : "";
+            // From and to, always. Three package jobs out of one blood centre all have the same
+            // "next stop", so the destination is the only thing that tells them apart.
+            String where = TripActivity.route(trip);
             String bg = trip.optString("bloodGroup", "");
-            jobSub.setText(where + (bg.isEmpty() ? "" : "\n" + bg + " " + trip.optString("component")));
+            if ("null".equals(bg)) bg = "";
+            int bottles = trip.optInt("bottles", 0);
+            jobSub.setText(where + (bg.isEmpty() ? "" : "\n" + bg + " " + trip.optString("component"))
+                    + (bottles > 0 ? "\n" + getString(R.string.bottles_title) + ": " + bottles : ""));
             jobStage.setText(trip.optString("statusLabel", "RUNNING JOB").toUpperCase());
 
             // The desk's distance estimate, so he knows what he is accepting.
@@ -281,14 +304,14 @@ public class HomeActivity extends BaseActivity {
             jobAnchorAt = trip.optString("assignedAt", null);
 
             // Tell him what is stacked behind this one, so finishing is not a surprise.
-            int queued = data.optInt("queued", 0);
+            int queued = Math.max(0, (all == null ? 0 : all.length()) - finishing.size() - 1);
             if (queued > 0) {
                 jobStage.setText(trip.optString("statusLabel", "").toUpperCase() + "  •  " +
                         getString(queued == 1 ? R.string.more_waiting : R.string.more_waiting_many, queued));
             }
-            paintQueue(data.optJSONArray("queue"));
+            paintQueue(all, activeTripId, finishing);
         } else {
-            paintQueue(null);
+            paintQueue(all, null, finishing);
             activeTripId = null;
             jobAnchorAt = null;
             Anim.show(jobCard, false);
@@ -583,15 +606,27 @@ public class HomeActivity extends BaseActivity {
      * order. A runner who can see both places can pick the one that is on his way, and the
      * leg he saves is a real one.
      */
-    private void paintQueue(org.json.JSONArray queue) {
+    private void paintQueue(org.json.JSONArray queue, String currentId, java.util.Set<String> finishing) {
         queueList.removeAllViews();
 
+        /*
+         * EVERY job he holds, not only the ones behind the live one.
+         *
+         * The list used to skip the live job, so with three jobs he saw two rows and a card,
+         * and with two he saw one row that was easy to miss under the card. Now it is simply
+         * "my jobs", numbered, each with where it starts and where it ends - the live one
+         * marked, the ones in his bag marked, the ones already handed over shown as uploading.
+         */
         int shown = 0;
         if (queue != null) {
             LayoutInflater inf = LayoutInflater.from(this);
             for (int i = 0; i < queue.length(); i++) {
                 final JSONObject q = queue.optJSONObject(i);
-                if (q == null || q.optBoolean("isCurrent", false)) continue;
+                if (q == null) continue;
+                final String id = q.optString("id");
+                boolean isNow = id.equals(currentId);
+                boolean done = finishing != null && finishing.contains(id);
+                boolean inHand = q.optBoolean("inHand", false);
 
                 View row = inf.inflate(R.layout.item_queued, queueList, false);
                 TextView title = row.findViewById(R.id.qTitle);
@@ -600,41 +635,50 @@ public class HomeActivity extends BaseActivity {
                 Button go = row.findViewById(R.id.qGo);
 
                 String who = q.optString("patientName", "");
-                title.setText(q.optString("headline", "") + (who.isEmpty() ? "" : "  •  " + who));
+                if ("null".equals(who)) who = "";
+                title.setText((shown + 1) + ".  " + q.optString("headline", "") + (who.isEmpty() ? "" : "  \u2022  " + who));
 
-                // Where, and how far. With ten jobs in hand the distance is the whole basis
-                // for choosing - a list of names tells him nothing about which to do first.
-                JSONObject target = q.optJSONObject("target");
-                String place = target != null ? target.optString("name", "") : "";
+                // From and to, and how far the next stop is. With several jobs out of one
+                // blood centre the destination is the only thing that tells them apart.
+                String place = TripActivity.route(q);
                 if (!q.isNull("targetKm")) {
                     double km = q.optDouble("targetKm", 0);
                     int eta = q.optInt("targetEtaMin", 0);
-                    place = place + "   " + String.format(java.util.Locale.ENGLISH, "%.1f km", km)
+                    place = place + "\n" + String.format(java.util.Locale.ENGLISH, "%.1f km", km)
                             + (eta > 0 ? " \u00b7 " + eta + " min" : "");
                 }
+                int bottles = q.optInt("bottles", 0);
+                if (bottles > 0) place = place + "   \u00b7 " + getString(R.string.bottles_title) + ": " + bottles;
                 where.setText(place);
 
-                state.setText(getString(q.optBoolean("waiting", false)
-                        ? R.string.queue_waiting : R.string.queue_accepted));
+                int label = done ? R.string.queue_uploading
+                        : isNow ? R.string.queue_now
+                        : inHand ? R.string.queue_in_hand
+                        : q.optBoolean("waiting", false) ? R.string.queue_waiting : R.string.queue_accepted;
+                state.setText(getString(label));
+                state.setTextColor(getResources().getColor(isNow || inHand ? R.color.jade : R.color.muted));
 
-                final String id = q.optString("id");
+                // "Do this one" only where switching means something.
+                go.setVisibility(isNow || done ? View.GONE : View.VISIBLE);
                 go.setOnClickListener(v -> switchTo(id));
-                row.setOnClickListener(v -> {
-                    Intent open = new Intent(this, TripActivity.class);
-                    open.putExtra("tripId", id);
-                    startActivity(open);
-                });
+                row.setAlpha(done ? 0.55f : 1f);
+                if (!done) {
+                    row.setOnClickListener(v -> {
+                        Intent open = new Intent(this, TripActivity.class);
+                        open.putExtra("tripId", id);
+                        startActivity(open);
+                    });
+                }
 
                 queueList.addView(row);
                 shown++;
             }
         }
-        // The heading carries the count, because "also waiting" reads very differently when
-        // it is one job and when it is nine.
+        // One job is already on the big card; the list earns its space from two upwards.
         ((TextView) findViewById(R.id.queueHead)).setText(
                 shown == 1 ? getString(R.string.queue_head)
                            : getString(R.string.queue_head_many, shown));
-        Anim.show(queueCard, shown > 0);
+        Anim.show(queueCard, shown > 1);
     }
 
     /** Asks the server to make this the live job, and says plainly when it will not. */

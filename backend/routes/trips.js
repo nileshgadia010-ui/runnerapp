@@ -5,7 +5,9 @@ const LocationPing = require('../models/LocationPing');
 const { auth, allow, can } = require('../middleware/auth');
 const { purgeTrip, describe } = require('../services/purge');
 const { tripTat } = require('../services/tat');
-const { assignTrip, applyStage } = require('../services/dispatch');
+const { assignTrip, applyStage, deskComplete, parseWhen } = require('../services/dispatch');
+const { upload, storeDeskPhoto } = require('../services/deskPhoto');
+const Case = require('../models/Case');
 const realtime = require('../services/realtime');
 
 router.use(auth);
@@ -81,7 +83,41 @@ router.post('/:id/stage', can('overrideStages'), async (req, res, next) => {
   try {
     const trip = await Trip.findById(req.params.id);
     if (!trip) return res.status(404).json({ error: 'Trip not found' });
-    await applyStage(trip, req.body.stage, { note: req.body.note, by: req.user.name + ' (desk)' });
+    if (req.body.stage === 'COMPLETED') {
+      await deskComplete(trip, { at: req.body.at, note: req.body.note, user: req.user });
+    } else {
+      const at = parseWhen(req.body.at, 'Time');
+      await applyStage(trip, req.body.stage, {
+        note: req.body.note, at: at || undefined, by: req.user.name + ' (desk)'
+      });
+    }
+    res.json(await Trip.findById(trip._id).populate(POP));
+  } catch (e) { next(e); }
+});
+
+/*
+ * Finish (or correct) a job from the portal, with the real time and an optional photo.
+ *
+ * Multipart, because the photo travels with it: fields `at` (delivered at), `pickedAt`
+ * (optional), `units`, `amount`, `paymentMode`, `note`, and a file `photo`.
+ */
+router.post('/:id/complete', can('overrideStages'), upload.single('photo'), async (req, res, next) => {
+  try {
+    const trip = await Trip.findById(req.params.id);
+    if (!trip) return res.status(404).json({ error: 'Trip not found' });
+    const b = req.body || {};
+    const photo = await storeDeskPhoto(req.file, { trip: trip._id, runner: trip.runner });
+    const wasDone = trip.status === 'COMPLETED';
+    await deskComplete(trip, {
+      at: b.at, pickedAt: b.pickedAt, units: b.units, amount: b.amount,
+      paymentMode: b.paymentMode, note: b.note, photo, user: req.user
+    });
+
+    // A corrected delivery time is also the case's closing time, when this leg closed it.
+    if (wasDone && b.at && trip.case && ['BLOOD_DELIVERY', 'COLLECTION_SAMPLE', 'PAYMENT_COLLECT', 'PACKAGE_DELIVER'].includes(trip.type)) {
+      const kase = await Case.findById(trip.case);
+      if (kase && kase.closedAt) { kase.closedAt = trip.completedAt; await kase.save(); }
+    }
     res.json(await Trip.findById(trip._id).populate(POP));
   } catch (e) { next(e); }
 });

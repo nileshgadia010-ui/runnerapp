@@ -47,6 +47,7 @@ public class DutyService extends Service {
     public static final String ACTION_START = "start";
     public static final String ACTION_STOP = "stop";
     public static final String ACTION_STOP_ALARM = "stop_alarm";
+    public static final String ACTION_KICK = "kick";
     public static final String BROADCAST_UPDATE = "com.searvator.ibsrunner.UPDATE";
 
     private static final String CH_DUTY = "ibs_duty";
@@ -80,7 +81,9 @@ public class DutyService extends Service {
      * and started the alarm again. From the runner's side the accept button simply did not
      * work. Remembering what he answered closes that window, however slow the network is.
      */
-    private final java.util.LinkedHashSet<String> answered = new java.util.LinkedHashSet<>();
+    // Touched from the worker thread (cycle) and the main thread (silence), so synchronised.
+    private final java.util.Set<String> answered =
+            java.util.Collections.synchronizedSet(new java.util.LinkedHashSet<>());
     private boolean alarmPlaying = false;
     private boolean onJob = false;
     private boolean running = false;
@@ -118,6 +121,17 @@ public class DutyService extends Service {
 
         if (ACTION_STOP.equals(action)) {
             stopAlarm();
+            // Punching out must not strand what is still on the phone. This service is the
+            // only thing that uploads the queues, so if anything is waiting it stays alive -
+            // no location, no polling, just uploading - and stops itself once both are empty.
+            if (queue != null && queue.size() + queue.photoCount() > 0) {
+                draining = true;
+                try { lm.removeUpdates(listener); } catch (Exception ignored) { }
+                if (!running) { running = true; loop.post(tick); }
+                return START_STICKY;
+            }
+            draining = false;
+            alive = false;
             stopTracking();
             stopForeground(true);
             stopSelf();
@@ -125,14 +139,24 @@ public class DutyService extends Service {
         }
         if (ACTION_STOP_ALARM.equals(action)) {
             if (ringingTripId != null) {
-                answered.add(ringingTripId);
-                while (answered.size() > 40) answered.remove(answered.iterator().next());
+                synchronized (answered) {
+                    answered.add(ringingTripId);
+                    while (answered.size() > 40) answered.remove(answered.iterator().next());
+                }
             }
             ringingTripId = null;
             stopAlarm();
             return START_STICKY;
         }
 
+        // "Send it now": a screen just queued something and should not wait for the next tick.
+        if (ACTION_KICK.equals(action) && running) {
+            new Thread(DutyService.this::cycle).start();
+            return START_STICKY;
+        }
+
+        draining = false;
+        alive = true;
         startForeground(NOTE_DUTY, dutyNotification(getString(R.string.note_on_duty), getString(R.string.note_location_shared)));
         startTracking();
         if (!running) {
@@ -198,8 +222,46 @@ public class DutyService extends Service {
         }
     };
 
+    /*
+     * One cycle at a time.
+     *
+     * The loop starts a new cycle every few seconds whether or not the last one finished, and
+     * on a slow connection the last one often had not. Two cycles posting the same queue at
+     * once sent every waiting press twice and raced each other clearing it - harmless on the
+     * server, but it doubled the traffic exactly when the connection could least afford it.
+     */
+    private final java.util.concurrent.atomic.AtomicBoolean busy = new java.util.concurrent.atomic.AtomicBoolean(false);
+
     private void cycle() {
+        if (!busy.compareAndSet(false, true)) return;
+        try { cycleOnce(); } finally { busy.set(false); }
+    }
+
+    /** Punched out, but saved presses or photos are still waiting to go up. */
+    private volatile boolean draining = false;
+    /** True while the service is running, so screens know a kick will be heard. */
+    static volatile boolean alive = false;
+
+    private void cycleOnce() {
         if (!prefs.signedIn()) return;
+
+        if (draining) {
+            if (api.online()) flushInOrder();
+            int left = queue.size() + queue.photoCount();
+            if (left == 0) {
+                draining = false;
+                alive = false;
+                new Handler(Looper.getMainLooper()).post(() -> {
+                    stopTracking();
+                    stopForeground(true);
+                    stopSelf();
+                });
+            } else {
+                updateDutyNotification(getString(R.string.note_on_duty),
+                        getString(R.string.note_waiting_upload, left));
+            }
+            return;
+        }
 
         long now = System.currentTimeMillis();
 
@@ -215,9 +277,8 @@ public class DutyService extends Service {
             queuePing(lastFix);
         }
         if (api.online()) {
+            flushInOrder();
             flushPings();
-            flushActions();
-            flushPhotos();
         }
 
         // 2. Environment signals, every two minutes. Cheap, and worth the record.
@@ -277,6 +338,8 @@ public class DutyService extends Service {
         String head = trip != null
                 ? trip.optString("headline") + " - " + trip.optString("statusLabel")
                 : getString(R.string.note_no_job);
+        int jobs = poll.optInt("jobsInHand", 0);
+        if (jobs > 1) head = getString(R.string.note_jobs_count, jobs) + "  |  " + head;
         int pending = queue.size() + queue.photoCount();
         if (pending > 0) head = head + "  (" + getString(R.string.note_waiting_upload, pending) + ")";
         updateDutyNotification(getString("AVAILABLE".equals(duty) ? R.string.note_on_duty_free : R.string.note_on_duty), head);
@@ -312,14 +375,44 @@ public class DutyService extends Service {
     }
 
     /**
+     * Sends the two queues in the order things happened.
+     *
+     * Arrival photos and plain presses wait in separate queues. They used to go actions first,
+     * photos second - so a "handed over" pressed at 3:30 could reach the server before the
+     * "reached, with photo" from 3:10, and was refused as out of order. Now whichever is older
+     * goes first. The server also accepts them either way round since v3.0, so this is about
+     * the times on the record being right, not about anything being lost.
+     */
+    private void flushInOrder() {
+        for (int round = 0; round < 6; round++) {
+            String a = queue.oldestActionAt();
+            String p = queue.oldestPhotoAt();
+            if (a == null && p == null) return;
+            boolean photoFirst = p != null && (a == null || p.compareTo(a) <= 0);
+            int before = queue.size() + queue.photoCount();
+            if (photoFirst) flushPhotos(); else flushActions();
+            // Nothing moved: the network failed. Stop and try next cycle.
+            if (queue.size() + queue.photoCount() >= before) return;
+        }
+    }
+
+    /**
      * Sends everything the runner did while the phone had no data. The server applies each
      * entry with the time it originally happened and answers per entry, so a single bad
      * action never blocks the rest of the queue.
      */
     private void flushActions() {
         try {
-            JSONArray items = queue.read();
-            if (items.length() == 0) return;
+            JSONArray all = queue.read();
+            if (all.length() == 0) return;
+            // Only the presses older than the oldest waiting photo, so the order holds.
+            String cut = queue.oldestPhotoAt();
+            JSONArray items = new JSONArray();
+            for (int i = 0; i < all.length(); i++) {
+                JSONObject o = all.getJSONObject(i);
+                if (cut != null && items.length() > 0 && o.optString("at", "").compareTo(cut) > 0) break;
+                items.put(o);
+            }
             JSONObject res = api.postSync("/api/runner/sync", new JSONObject().put("items", items));
             if (res == null || res.has("__error")) return;
             JSONArray results = res.optJSONArray("results");
@@ -367,10 +460,12 @@ public class DutyService extends Service {
                     "/api/runner/trip/" + item.optString("tripId") + "/stage", fields, f);
 
             // A null answer means the connection failed, so the entry stays for the next
-            // pass. Anything else - accepted, or refused with a reason - is final: the entry
-            // goes and the picture with it. Keeping a refused one would wedge every photo
-            // behind it forever.
+            // pass. So does a server that is restarting (5xx), a signed-out session (401) or
+            // a "try again" - none of those are the runner's fault, and dropping them is how
+            // a finished job used to come back as running. Only a real refusal (the job was
+            // cancelled, it is not his) is final; keeping that one would wedge the queue.
             if (res == null) return;
+            if (res.has("__error") && !Api.isFinal(res)) return;
             queue.removePhoto(id, true);
 
             Intent b = new Intent(BROADCAST_UPDATE);
@@ -556,6 +651,14 @@ public class DutyService extends Service {
 
     public static void stop(Context c) {
         c.startService(new Intent(c, DutyService.class).setAction(ACTION_STOP));
+    }
+
+    /** Push whatever is queued right now instead of waiting for the next tick. */
+    public static void kick(Context c) {
+        try {
+            if (!alive && !new Prefs(c).onDuty()) return;
+            c.startService(new Intent(c, DutyService.class).setAction(ACTION_KICK));
+        } catch (Exception ignored) { }
     }
 
     public static void silence(Context c) {

@@ -88,6 +88,18 @@ const caseSchema = new mongoose.Schema({
 
   closedAt: Date,
   cancelReason: String,
+
+  // Filled when the desk marks the case done from the portal, with or without a runner trip.
+  completion: {
+    via: { type: String, default: '' },        // 'PORTAL'
+    at: Date,                                  // the time the desk typed in
+    byName: String,
+    by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    photo: String,
+    note: String,
+    units: Number,
+    recordedAt: Date                           // when it was typed, which may be later than `at`
+  },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
 }, { timestamps: true });
 

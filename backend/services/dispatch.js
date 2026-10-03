@@ -53,6 +53,81 @@ const NEXT = {
   CANCELLED: []
 };
 
+/*
+ * Forward is always allowed.
+ *
+ * NEXT above lists the single steps, but a runner's phone does not always send them one at a
+ * time. The arrival photo travels in one upload queue and the "handed over" press in another,
+ * so on a weak connection the handover can reach the server before the arrival does. The old
+ * rule refused it ("cannot move from Accepted to Delivered"), the phone took the refusal as
+ * final and threw the press away - and the job sat on the dashboard as running, and on the
+ * runner's screen in front of every newer job, after he had already delivered it.
+ *
+ * Moving forward is never a lie the runner can tell to his own advantage: he is saying the
+ * work is further along than we knew. So any forward move is accepted and the skipped
+ * timestamps are filled in (see fillTimes). Backward moves remain impossible; going back to an
+ * earlier stage is treated as the late replay it is (see routes/runner.js doStage).
+ */
+const FLOW = ['ASSIGNED', 'ACCEPTED', 'EN_ROUTE_PICKUP', 'AT_PICKUP', 'PICKED', 'EN_ROUTE_DROP', 'AT_DROP', 'COMPLETED'];
+const RANK = Object.fromEntries(FLOW.map((s, i) => [s, i]));
+const isForward = (from, to) => RANK[from] !== undefined && RANK[to] !== undefined && RANK[to] > RANK[from];
+
+/**
+ * Gives every stage between where the trip was and where it is now a timestamp, so the TAT
+ * report never has a hole and never runs backwards.
+ *
+ *  - a skipped "on the way" stage is stamped with the moment he left the previous place
+ *    (he set off when he accepted; he left the pickup when he picked up);
+ *  - a skipped arrival is stamped with the next moment we do know (if he says he picked it
+ *    up at 3:10 and never said when he arrived, he arrived at 3:10);
+ *  - times the desk typed in (`manual`) win over anything inferred;
+ *  - finally the whole run is made non-decreasing, because a phone clock a minute out must
+ *    not produce a negative ride time.
+ */
+function fillTimes(trip, fromStatus, stage, now, manual) {
+  manual = manual || {};
+  const stages = FLOW.slice(1); // ACCEPTED .. COMPLETED
+  const known = {};
+  stages.forEach(s => { const v = trip[STAGE_FIELD[s]]; if (v) known[s] = new Date(v); });
+  Object.keys(manual).forEach(s => { if (manual[s] && STAGE_FIELD[s]) known[s] = new Date(manual[s]); });
+  if (!known[stage]) known[stage] = now;
+
+  const lo = RANK[fromStatus] === undefined ? 0 : RANK[fromStatus];
+  const hi = RANK[stage];
+  const span = stages.filter(s => RANK[s] > lo && RANK[s] <= hi);
+
+  const prevKnown = s => {
+    for (let i = RANK[s] - 1; i >= 1; i--) if (known[FLOW[i]]) return known[FLOW[i]];
+    return trip.assignedAt ? new Date(trip.assignedAt) : null;
+  };
+  const nextKnown = s => {
+    for (let i = RANK[s] + 1; i <= hi; i++) if (known[FLOW[i]]) return known[FLOW[i]];
+    return now;
+  };
+
+  span.forEach(s => {
+    if (known[s]) return;
+    const onTheWay = s === 'EN_ROUTE_PICKUP' || s === 'EN_ROUTE_DROP';
+    known[s] = onTheWay ? (prevKnown(s) || nextKnown(s)) : nextKnown(s);
+  });
+
+  // Non-decreasing, oldest first.
+  let last = trip.assignedAt ? new Date(trip.assignedAt) : null;
+  stages.forEach(s => {
+    if (!known[s]) return;
+    if (last && known[s] < last) known[s] = new Date(last);
+    last = known[s];
+  });
+
+  // Write back the span (and anything the desk typed), never touching what is outside it.
+  stages.forEach(s => {
+    const f = STAGE_FIELD[s];
+    if (span.includes(s) || manual[s]) {
+      if (!trip[f] || manual[s] || new Date(trip[f]).getTime() !== known[s].getTime()) trip[f] = known[s];
+    }
+  });
+}
+
 const ISTDate = (d = new Date()) => new Date(d.getTime() + 330 * 60000).toISOString().slice(0, 10);
 
 // What each job type is called, and what the runner is actually carrying.
@@ -101,8 +176,12 @@ async function queueFor(runnerId) {
  */
 const IN_HAND = ['PICKED', 'EN_ROUTE_DROP', 'AT_DROP'];
 
+// What cannot wait in a bag: samples, blood, and the "package" jobs - which at IBS are
+// mostly bottles from a blood centre. Cash can wait; it does not spoil.
+const PERISHABLE = ['SAMPLE_PICKUP', 'BLOOD_DELIVERY', 'COLLECTION_SAMPLE', 'PACKAGE_DELIVER'];
+
 function currentOf(queue) {
-  return queue.find(t => IN_HAND.includes(t.status)) || queue[0] || null;
+  return queue.find(t => IN_HAND.includes(t.status) && PERISHABLE.includes(t.type)) || queue[0] || null;
 }
 
 // After a trip ends, whatever is next in the queue becomes the live one and the phone rings
@@ -132,9 +211,10 @@ async function promoteNext(runner) {
   return next;
 }
 
-// How many jobs one runner may hold at once. The desk can line up the next errand while he
-// is still out, but not bury him - past three, whoever is assigning has lost the plot.
-const MAX_QUEUE = 3;
+// How many jobs one runner may hold at once. A runner leaving a blood centre with a box of
+// bottles for six hospitals really is holding six jobs, so this is a guard against a stuck
+// screen rather than a working limit.
+const MAX_QUEUE = 10;
 
 async function assignTrip({ caseId, type, runnerId, assignedBy }) {
   const kase = await Case.findById(caseId);
@@ -202,7 +282,10 @@ async function assignTrip({ caseId, type, runnerId, assignedBy }) {
     pickupLocation: pickup,
     dropLocation: drop,
     status: 'ASSIGNED',
-    queueOrder: queue.length,
+    // Behind everything he already holds. Using the queue LENGTH here gave two jobs the same
+    // number as soon as one in the middle had finished, and the tie was then broken by
+    // whatever order the database felt like - which is how a newer job could jump an older one.
+    queueOrder: queue.reduce((m, t) => Math.max(m, Number(t.queueOrder) || 0), -1) + 1,
     assignedAt: now,
     assignedBy,
     // Every new job rings, even one that lines up behind a job already in hand. The runner
@@ -230,33 +313,15 @@ async function assignTrip({ caseId, type, runnerId, assignedBy }) {
 
 async function applyStage(trip, stage, opts = {}) {
   const allowed = NEXT[trip.status] || [];
-  if (!allowed.includes(stage)) {
+  if (!allowed.includes(stage) && !isForward(trip.status, stage)) {
     throw httpError(400, 'Cannot move from ' + labelFor(trip.type, trip.status) + ' to ' + labelFor(trip.type, stage));
   }
 
   const now = opts.at ? new Date(opts.at) : new Date();
-  const field = STAGE_FIELD[stage];
-  if (field && !trip[field]) trip[field] = now;
+  const fromStatus = trip.status;
 
-  /*
-   * Fill in whatever the runner skipped, so the TAT maths never has a hole.
-   *
-   * The report measures five spans - accept, ride to pickup, wait at pickup, ride to drop,
-   * wait at drop - and each needs a timestamp at both ends. When a stage is skipped its
-   * timestamp is taken from the stage it was between, which is the honest reading: if he
-   * says he reached the hospital and never said when he set off, he set off when he
-   * accepted. The spans stay truthful; only the button presses disappear.
-   */
-  if (stage === 'AT_PICKUP' && !trip.startedAt) trip.startedAt = trip.acceptedAt || now;
-  if (stage === 'PICKED' && !trip.atPickupAt) trip.atPickupAt = now;
-  if (stage === 'AT_DROP' && !trip.dropStartedAt) trip.dropStartedAt = trip.pickedAt || now;
-
-  // Handing over in one tap: he was on the way from the moment he picked up, and he arrived
-  // at the moment he handed over. Dwell at the drop reads as zero, which is what happened.
-  if (stage === 'COMPLETED') {
-    if (!trip.dropStartedAt) trip.dropStartedAt = trip.pickedAt || now;
-    if (!trip.atDropAt) trip.atDropAt = now;
-  }
+  // Every stage he skipped gets a time, so the TAT spans stay complete (see fillTimes).
+  if (RANK[stage] !== undefined) fillTimes(trip, fromStatus, stage, now, opts.times);
 
   trip.status = stage;
   if (stage === 'REJECTED') { trip.rejectedAt = now; trip.rejectReason = opts.note || ''; }
@@ -271,7 +336,16 @@ async function applyStage(trip, stage, opts = {}) {
   if (opts.amount !== undefined && opts.amount !== null && opts.amount !== '') trip.amountCollected = Number(opts.amount);
   if (opts.paymentMode) trip.paymentMode = opts.paymentMode;
   if (opts.paymentRef) trip.paymentRef = opts.paymentRef;
-  if (opts.note && !['REJECTED', 'CANCELLED'].includes(stage)) trip.runnerNote = opts.note;
+  const portal = opts.via === 'PORTAL';
+  if (opts.note && !['REJECTED', 'CANCELLED'].includes(stage)) {
+    if (portal) trip.deskNote = opts.note; else trip.runnerNote = opts.note;
+  }
+  // Who closed it, and from where. A job finished from the portal is a different kind of
+  // record from one the runner finished on his phone - the office has to be able to tell.
+  if (stage === 'COMPLETED') {
+    trip.closedVia = portal ? 'PORTAL' : 'APP';
+    trip.closedByName = opts.byName || (portal ? 'Desk' : '');
+  }
 
   let distanceToTarget = null;
   if (opts.lat && opts.lng) {
@@ -335,6 +409,127 @@ async function applyStage(trip, stage, opts = {}) {
   return trip;
 }
 
+/**
+ * Finishing a job from the portal.
+ *
+ * Used when the runner did the work but the phone did not say so - a dead battery, a
+ * basement with no signal, an old build, or he simply forgot to press. The desk types in when
+ * it really happened, can attach the handover photo the runner sent on WhatsApp, and the job
+ * is closed with closedVia = 'PORTAL' so nobody later mistakes it for a phone record.
+ *
+ * On a job that is already finished this corrects it instead: a wrong delivery time or a
+ * missing photo can be fixed without inventing a second completion. The correction is stamped
+ * (amendedAt / amendedByName) and written into the job's own history.
+ */
+async function deskComplete(trip, input) {
+  const { user } = input;
+  const name = (user && user.name) || 'Desk';
+  const now = new Date();
+
+  const when = parseWhen(input.at, 'Delivered at') || now;
+  let picked = parseWhen(input.pickedAt, 'Picked up at');
+
+  // A job closed from the portal with no pickup time has its pickup stamped at the same
+  // moment as the delivery. When that delivery time is corrected, the pickup was never a
+  // separate fact - it moves with it, instead of blocking the correction.
+  if (!picked && trip.status === 'COMPLETED' && trip.pickedAt && trip.completedAt &&
+      new Date(trip.pickedAt).getTime() === new Date(trip.completedAt).getTime()) {
+    picked = when;
+  }
+
+  if (when.getTime() > now.getTime() + 2 * 60000) throw httpError(400, 'Delivered at cannot be in the future');
+  if (trip.assignedAt && when < new Date(trip.assignedAt)) {
+    throw httpError(400, 'Delivered at cannot be before the job was assigned (' +
+      new Date(trip.assignedAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) + ')');
+  }
+  if (picked && picked > when) throw httpError(400, 'Picked up at must be before Delivered at');
+  if (picked && trip.assignedAt && picked < new Date(trip.assignedAt)) {
+    throw httpError(400, 'Picked up at cannot be before the job was assigned');
+  }
+
+  if (['REJECTED', 'CANCELLED'].includes(trip.status)) {
+    throw httpError(400, 'This job was ' + trip.status.toLowerCase() + '. Send a runner again instead of completing it.');
+  }
+  // Delivered before it was picked up cannot be right. Say so, rather than quietly moving
+  // one of the two times to make them fit.
+  // (An accept stamped at the very moment of an earlier portal close was inferred, not
+  // measured, so it does not count here - it moves with the correction below.)
+  const acceptInferred = trip.acceptedAt && trip.completedAt &&
+    new Date(trip.acceptedAt).getTime() === new Date(trip.completedAt).getTime();
+  if (picked && trip.acceptedAt && !acceptInferred && picked < new Date(trip.acceptedAt) && trip.status !== 'ASSIGNED') {
+    throw httpError(400, 'Picked up at cannot be before the runner accepted (' +
+      new Date(trip.acceptedAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) + ')');
+  }
+  const pickedEff = picked || (trip.pickedAt ? new Date(trip.pickedAt) : null);
+  if (pickedEff && when < pickedEff) {
+    throw httpError(400, 'Delivered at cannot be before it was picked up (' +
+      pickedEff.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) + '). Change "Picked up at" too.');
+  }
+
+  const note = String(input.note || '').trim();
+
+  if (trip.status === 'COMPLETED') {
+    // A correction, not a second completion. Only what the desk actually changed moves, and
+    // the times that were measured separately (arrival at the drop, leaving the pickup) are
+    // kept unless the new times would put them out of order.
+    const t0 = ms => (ms ? new Date(ms).getTime() : null);
+    // Stages that were stamped at the same instant as the old completion were inferred from
+    // it (a portal close fills them that way), so they move with the new time.
+    if (input.at) {
+      const was = t0(trip.completedAt);
+      FLOW.slice(1, RANK.COMPLETED).forEach(st => {
+        const f = STAGE_FIELD[st];
+        if (trip[f] && t0(trip[f]) === was) trip[f] = (picked && RANK[st] <= RANK.PICKED) ? picked : when;
+      });
+    }
+    if (input.at) {
+      const oldDone = t0(trip.completedAt);
+      trip.completedAt = when;
+      if (!trip.atDropAt || t0(trip.atDropAt) === oldDone || t0(trip.atDropAt) > when.getTime()) trip.atDropAt = when;
+    }
+    if (picked) {
+      const oldPicked = t0(trip.pickedAt);
+      trip.pickedAt = picked;
+      if (!trip.atPickupAt || t0(trip.atPickupAt) === oldPicked || t0(trip.atPickupAt) > picked.getTime()) trip.atPickupAt = picked;
+      if (!trip.dropStartedAt || t0(trip.dropStartedAt) === oldPicked || t0(trip.dropStartedAt) < picked.getTime()) trip.dropStartedAt = picked;
+    }
+    if (trip.dropStartedAt && trip.atDropAt && t0(trip.dropStartedAt) > t0(trip.atDropAt)) trip.dropStartedAt = trip.atDropAt;
+    if (input.photo) trip.proofPhoto = input.photo;
+    if (input.units !== undefined && input.units !== '' && input.units !== null) trip.unitsCarried = Number(input.units);
+    if (note) trip.deskNote = note;
+    trip.amendedAt = now;
+    trip.amendedByName = name;
+    trip.events.push({ status: 'COMPLETED', at: now, note: 'Corrected from the portal' + (note ? ': ' + note : ''), by: name + ' (portal)' });
+    await trip.save();
+    realtime.emit('trip:update', { tripId: String(trip._id), status: trip.status, caseId: String(trip.case) });
+    return trip;
+  }
+
+  return applyStage(trip, 'COMPLETED', {
+    at: when,
+    times: picked ? { AT_PICKUP: picked, PICKED: picked } : undefined,
+    proofPhoto: input.photo,
+    units: input.units,
+    amount: input.amount,
+    paymentMode: input.paymentMode,
+    note: note || 'Completed from the portal',
+    by: name + ' (portal)',
+    via: 'PORTAL',
+    byName: name
+  });
+}
+
+// datetime-local from the browser arrives as "2026-10-03T16:40" with no zone; the desk is in
+// India, so that is read as IST rather than as the server's UTC.
+function parseWhen(raw, label) {
+  if (!raw) return null;
+  let s = String(raw).trim();
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(s)) s += '+05:30';
+  const d = new Date(s);
+  if (isNaN(d.getTime())) throw httpError(400, label + ' is not a valid date and time');
+  return d;
+}
+
 function httpError(status, message) {
   const e = new Error(message);
   e.status = status;
@@ -342,4 +537,5 @@ function httpError(status, message) {
 }
 
 module.exports = { assignTrip, applyStage, labelFor, jobTitle, JOB, queueFor, currentOf, IN_HAND,
-                   promoteNext, ACTIVE, MAX_QUEUE, ISTDate, httpError };
+                   promoteNext, ACTIVE, MAX_QUEUE, ISTDate, httpError, RANK, FLOW, isForward,
+                   STAGE_FIELD, fillTimes, deskComplete, parseWhen, PERISHABLE };

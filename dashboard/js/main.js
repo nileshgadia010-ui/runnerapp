@@ -41,6 +41,7 @@ const Main = (function () {
         item(s.runnersOnTrip, 'Runners on trip') +
         item(s.runnersOffDuty + s.runnersOnBreak, 'Off duty or break') +
         item(s.completedToday, 'Finished today') +
+        item(s.bottlesToday || 0, 'Bottles delivered today', s.bottlesToday ? 'is-good' : '') +
         item(F.mins(s.avgTatToday), 'Avg TAT today') +
         item(s.liveBreaches, 'Running late now', s.liveBreaches ? 'is-alert' : '') +
         '<div class="strip__clock mono" id="wallClock"></div>';
@@ -156,13 +157,19 @@ const Main = (function () {
       // repaint everything, which is why the map lagged instead of tracking.
       socket.on('runner:location', d => Live.moveRunner(d));
 
+      // One stage change fires three or four events (trip, case, runner status). Refreshing
+      // on each one sent four rounds of requests at the server at once; gathering them for a
+      // moment sends one, and the screen updates sooner because it is not queued behind three.
+      let pending = null;
+      const repaint = () => {
+        pending = null;
+        Live.refresh();
+        strip();
+        const cases = document.querySelector('.page[data-page="cases"]');
+        if (cases && !cases.hidden) Cases.load();
+      };
       ['runner:status', 'trip:update', 'case:update', 'case:new'].forEach(ev =>
-        socket.on(ev, () => {
-          Live.refresh();
-          strip();
-          const cases = document.querySelector('.page[data-page="cases"]');
-          if (cases && !cases.hidden) Cases.load();
-        }));
+        socket.on(ev, () => { if (!pending) pending = setTimeout(repaint, 350); }));
 
       // A phone that starts reporting a VPN, a fake-GPS app or root raises this once, the
       // moment it changes. It is information for the desk, not an alarm - so it repaints

@@ -44,6 +44,20 @@
             android:orientation="vertical"
             android:padding="16dp">
 
+            <!-- The other jobs he is holding. Before this, the trip screen showed one job and
+                 nothing else, so a runner with three deliveries only learned about the second
+                 after finishing the first. Tapping it goes back to the full list. -->
+            <TextView
+                android:id="@+id/tOthers"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                android:background="@drawable/card_flat"
+                android:padding="12dp"
+                android:textColor="@color/ink"
+                android:textSize="13sp"
+                android:visibility="gone" />
+
             <!-- timers -->
             <LinearLayout
                 android:layout_width="match_parent"

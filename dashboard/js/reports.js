@@ -45,6 +45,9 @@ const Reports = (function () {
       { label: 'On time', value: s.onTimePercent === null ? '--' : s.onTimePercent + '%',
         alert: s.onTimePercent !== null && s.onTimePercent < 80 },
       { label: 'SLA missed', value: s.breached, alert: s.breached > 0 },
+      { label: 'Bottles delivered', value: s.bottles || 0,
+        note: (s.bottleJobs || 0) + ' deliveries' },
+      { label: 'Completed from portal', value: s.fromPortal || 0 },
       { label: 'Avg accept', value: F.mins(s.avgAccept) },
       { label: 'Avg to pickup', value: F.mins(s.avgToPickup) },
       { label: 'Avg at pickup', value: F.mins(s.avgPickupDwell) },
@@ -62,11 +65,18 @@ const Reports = (function () {
       '<td>' + F.esc(r.runner || '-') + '</td>' +
       '<td style="font-size:12px">' + F.esc(r.pickup) + ' &rarr; ' + F.esc(r.drop) + '</td>' +
       '<td><span class="chip ' + (r.status === 'COMPLETED' ? 'chip--green' : ['REJECTED', 'CANCELLED'].includes(r.status) ? 'chip--red' : 'chip--blue') + '">' +
-      F.stageLabel(r.type, r.status) + '</span></td>' +
+      F.stageLabel(r.type, r.status) + '</span>' +
+      (r.closedVia === 'PORTAL' ? '<div class="portal-tag" title="Completed from portal' +
+        (r.closedByName ? ' by ' + F.esc(r.closedByName) : '') + '">Portal</div>' : '') +
+      (r.bottles ? '<div style="font-size:11px;color:var(--muted)">' + r.bottles + ' bottle' + (r.bottles === 1 ? '' : 's') + '</div>' : '') +
+      '</td>' +
       cell(r.accept) + cell(r.toPickup) + cell(r.pickupDwell) + cell(r.toDrop) + cell(r.dropDwell) +
       '<td class="num ' + (r.grade === 'breach' ? 't-breach' : r.grade === 'warn' ? 't-warn' : 't-ok') + '"><b>' + F.mins(r.total) + '</b></td>' +
       '<td class="rowacts">' +
       '<button class="btn btn--ghost btn--sm" data-open="' + r.id + '">Open</button>' +
+      (RUNNING.includes(r.status) && API.can('overrideStages')
+        ? '<button class="btn btn--ghost btn--sm" data-done="' + r.id + '">Complete</button>'
+        : '') +
       (RUNNING.includes(r.status)
         ? '<button class="btn btn--ghost btn--sm" data-stop="' + r.id + '" style="color:var(--crimson)">Cancel</button>'
         : '') +
@@ -80,6 +90,14 @@ const Reports = (function () {
 
     host.querySelectorAll('[data-stop]').forEach(b =>
       b.addEventListener('click', () => stopTrip(b.dataset.stop)));
+
+    host.querySelectorAll('[data-done]').forEach(b =>
+      b.addEventListener('click', async () => {
+        try {
+          const trip = await API.get('/api/trips/' + b.dataset.done);
+          Complete.open({ trip, onDone: loadTrips });
+        } catch (e) { toast(e.message, 'error'); }
+      }));
   }
 
   const RUNNING = ['ASSIGNED', 'ACCEPTED', 'EN_ROUTE_PICKUP', 'AT_PICKUP', 'PICKED', 'EN_ROUTE_DROP', 'AT_DROP'];

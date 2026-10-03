@@ -6,6 +6,8 @@ const { auth, allow, can } = require('../middleware/auth');
 const { purgeCase, describe } = require('../services/purge');
 const { caseTat } = require('../services/tat');
 const realtime = require('../services/realtime');
+const { deskComplete, parseWhen, httpError, ACTIVE } = require('../services/dispatch');
+const { upload, storeDeskPhoto } = require('../services/deskPhoto');
 
 router.use(auth);
 
@@ -86,12 +88,119 @@ router.post('/', can('createCases'), async (req, res) => {
   res.status(201).json(await Case.findById(kase._id).populate(POP));
 });
 
-router.put('/:id', can('editRecords'), async (req, res) => {
-  const b = { ...req.body };
-  delete b.caseNo; delete b.status; delete b.sampleTrip; delete b.deliveryTrip;
-  const kase = await Case.findByIdAndUpdate(req.params.id, b, { new: true }).populate(POP);
-  if (!kase) return res.status(404).json({ error: 'Case not found' });
-  res.json(kase);
+/*
+ * Editing a case.
+ *
+ * Anything the desk typed can be corrected - names, places, counts, remarks. What it cannot
+ * touch is the bookkeeping (number, status, the trips hanging off it, who closed it); those
+ * change only through the actions that own them.
+ *
+ * If a runner has been sent but has not picked anything up yet, a changed place is passed on
+ * to his job too, so his phone navigates to the corrected address rather than the old one.
+ * Once he has collected, the pickup is history and stays as it was.
+ */
+// Only these can be edited. A list of what is ALLOWED, not of what is forbidden: a body like
+// {"$set": {"status": "CLOSED"}} or {"crossmatch.completedAt": ...} must not get through.
+const EDITABLE = ['jobType', 'patientName', 'patientAge', 'patientGender', 'bloodGroup', 'component',
+  'unitsRequested', 'hospital', 'bloodCenter', 'wardBed', 'doctorName', 'attendantName', 'attendantPhone',
+  'reference', 'fromLocation', 'toLocation', 'amount', 'amountAgainst', 'packageDetails', 'priority',
+  'remarks', 'source'];
+
+router.put('/:id', can('editRecords'), async (req, res, next) => {
+  try {
+    const b = {};
+    EDITABLE.forEach(k => {
+      const v = req.body ? req.body[k] : undefined;
+      if (v === undefined) return;
+      if (v !== null && typeof v === 'object') return; // no operators, no nested objects
+      b[k] = v;
+    });
+    ['hospital', 'bloodCenter', 'fromLocation', 'toLocation'].forEach(k => { if (b[k] === '') b[k] = null; });
+    if (b.unitsRequested !== undefined) b.unitsRequested = Math.max(0, Number(b.unitsRequested) || 0);
+    if (b.amount !== undefined) b.amount = Number(b.amount) || 0;
+
+    const before = await Case.findById(req.params.id).lean();
+    if (!before) return res.status(404).json({ error: 'Case not found' });
+    if (b.jobType && b.jobType !== before.jobType && before.status !== 'NEW') {
+      return res.status(400).json({ error: 'The job type can only be changed before a runner is sent' });
+    }
+
+    const kase = await Case.findByIdAndUpdate(req.params.id, b, { new: true, runValidators: true });
+
+    // Before pickup both ends can move; once he is carrying it only the drop can - the place he
+    // collected from is history, but where he is taking it is still ahead of him.
+    const running = await Trip.find({ case: kase._id, status: { $in: ACTIVE } });
+    for (const t of running) {
+      let pickup, drop;
+      if (t.type === 'SAMPLE_PICKUP') { pickup = kase.hospital; drop = kase.bloodCenter; }
+      else if (t.type === 'BLOOD_DELIVERY') { pickup = kase.bloodCenter; drop = kase.hospital; }
+      else { pickup = kase.fromLocation; drop = kase.toLocation; }
+      let moved = false;
+      const collected = ['PICKED', 'EN_ROUTE_DROP', 'AT_DROP'].includes(t.status);
+      if (!collected && pickup && String(pickup) !== String(t.pickupLocation)) { t.pickupLocation = pickup; moved = true; }
+      if (drop && String(drop) !== String(t.dropLocation)) { t.dropLocation = drop; moved = true; }
+      if (moved) {
+        t.events.push({ status: t.status, at: new Date(), note: 'Address changed by the desk', by: req.user.name });
+        await t.save();
+        realtime.emit('trip:update', { tripId: String(t._id), status: t.status, runnerId: String(t.runner) });
+      }
+    }
+
+    realtime.emit('case:update', { caseId: String(kase._id), status: kase.status });
+    res.json(await Case.findById(kase._id).populate(POP));
+  } catch (e) { next(e); }
+});
+
+/*
+ * Complete a case from the portal.
+ *
+ * If a runner is out on it, that job is finished (with the time and photo the desk gives) and
+ * the case moves on exactly as if the phone had done it - a sample leg lands the case at the
+ * blood centre, a delivery or errand closes it.
+ *
+ * If nobody was sent - the hospital collected it themselves, or it was handled by phone - the
+ * case is closed directly and the record says so: completion.via = 'PORTAL', who, when.
+ */
+router.post('/:id/complete', can('overrideStages'), upload.single('photo'), async (req, res, next) => {
+  try {
+    const kase = await Case.findById(req.params.id);
+    if (!kase) return res.status(404).json({ error: 'Case not found' });
+    if (['CANCELLED'].includes(kase.status)) return res.status(400).json({ error: 'This case was cancelled' });
+    const b = req.body || {};
+
+    const running = await Trip.findOne({ case: kase._id, status: { $in: ACTIVE } });
+    const photo = await storeDeskPhoto(req.file, { trip: running ? running._id : null, runner: running ? running.runner : null });
+
+    if (running) {
+      await deskComplete(running, {
+        at: b.at, pickedAt: b.pickedAt, units: b.units, amount: b.amount,
+        paymentMode: b.paymentMode, note: b.note, photo, user: req.user
+      });
+      return res.json({ ok: true, trip: String(running._id), case: await Case.findById(kase._id).populate(POP) });
+    }
+
+    const now = new Date();
+    const when = parseWhen(b.at, 'Completed at') || now;
+    if (when.getTime() > now.getTime() + 2 * 60000) throw httpError(400, 'Completed at cannot be in the future');
+    if (kase.createdAt && when < new Date(kase.createdAt)) throw httpError(400, 'Completed at cannot be before the case was created');
+
+    const blood = !kase.jobType || kase.jobType === 'BLOOD';
+    kase.status = blood ? 'DELIVERED' : 'JOB_DONE';
+    kase.closedAt = when;
+    kase.completion = {
+      via: 'PORTAL', at: when, byName: req.user.name, by: req.user._id,
+      photo, note: String(b.note || '').trim(),
+      units: b.units !== undefined && b.units !== '' ? Number(b.units) : undefined,
+      recordedAt: now
+    };
+    if (kase.jobType === 'PAYMENT_COLLECT' && b.amount) {
+      kase.collectedAmount = Number(b.amount);
+      kase.paymentMode = b.paymentMode || kase.paymentMode || 'CASH';
+    }
+    await kase.save();
+    realtime.emit('case:update', { caseId: String(kase._id), status: kase.status });
+    res.json({ ok: true, case: await Case.findById(kase._id).populate(POP) });
+  } catch (e) { next(e); }
 });
 
 // Crossmatch clock - this is the lab leg of the TAT, between the two runner trips.

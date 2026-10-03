@@ -226,7 +226,7 @@
     <string name="photo_at_place">yahan photo lena zaroori hai</string>
     <string name="arrival_photo_saved">Photo save ho gaya. Signal aate hi upload ho jayega.</string>
     <string name="photo_waiting">%1$d photo upload hona baaki hai</string>
-    <string name="queue_head">AAPKE LIYE AUR BHI HAI</string>
+    <string name="queue_head">MERE SAARE JOB</string>
     <string name="queue_do_this">Ye karein</string>
     <string name="queue_waiting">Aapke accept karne ka intezaar</string>
     <string name="queue_accepted">Accept kiya hua</string>
@@ -239,5 +239,19 @@
     <string name="hand_back_need_reason">Wajah likhein, taaki desk kisi aur ko bhej sake</string>
     <string name="hand_back_done">Wapas kar diya. Desk kisi aur ko bhej dega.</string>
     <string name="hand_back_carrying">Ye aapke paas hai. Pehle pahuchayein, ya desk ko call karein.</string>
-    <string name="queue_head_many">AAPKE LIYE AUR BHI HAI (%1$d)</string>
+    <string name="queue_head_many">MERE SAARE JOB (%1$d)</string>
+    <string name="queue_now">ABHI YE CHAL RAHA HAI</string>
+    <string name="queue_in_hand">AAPKE PAAS HAI</string>
+    <string name="queue_uploading">POORA HUA - UPLOAD HO RAHA HAI</string>
+    <string name="others_head_one">Aapke paas 1 aur job hai. Sab dekhne ke liye dabayein.</string>
+    <string name="others_head_many">Aapke paas %1$d aur job hain. Sab dekhne ke liye dabayein.</string>
+    <string name="collect_together_title">%1$s se ye bhi le lein?</string>
+    <string name="collect_together_yes">Chune hue le liye</string>
+    <string name="collect_together_no">Abhi nahi</string>
+    <string name="collect_together_note">%1$s ke saath liya</string>
+    <string name="collect_together_done">%1$d aur job \"le liya\" ho gaye</string>
+    <string name="bottles_title">Bottle / box</string>
+    <string name="bottles_hint">Kitne le ja rahe hain?</string>
+    <string name="photo_saved_uploading">Phone me save ho gaya. Network aate hi photo upload ho jayegi.</string>
+    <string name="note_jobs_count">%1$d job</string>
 </resources>

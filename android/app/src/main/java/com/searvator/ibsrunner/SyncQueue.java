@@ -51,6 +51,47 @@ public class SyncQueue {
         } catch (Exception e) { return null; }
     }
 
+    /**
+     * A stage with the two extras the plain version cannot carry: "and I have it in my hand"
+     * (one press for arrive + collect), and which job it was collected together with, so the
+     * server can file the one photo against both.
+     */
+    public synchronized String addStageFull(String tripId, String stage, double lat, double lng,
+                                            String units, String note, boolean andPicked, String withTrip) {
+        try {
+            JSONObject o = new JSONObject();
+            o.put("id", newId());
+            o.put("kind", "stage");
+            o.put("tripId", tripId);
+            o.put("stage", stage);
+            if (lat != 0 || lng != 0) { o.put("lat", lat); o.put("lng", lng); }
+            if (units != null && units.length() > 0) o.put("units", units);
+            if (note != null && note.length() > 0) o.put("note", note);
+            if (andPicked) o.put("andPicked", true);
+            if (withTrip != null && withTrip.length() > 0) o.put("withTrip", withTrip);
+            o.put("at", Clock.nowIso());
+            push(o);
+            return o.getString("id");
+        } catch (Exception e) { return null; }
+    }
+
+    /** A stage with every field the screen collected (amount, mode, barcode, units, ...). */
+    public synchronized String addStageMap(String tripId, String stage, java.util.Map<String, String> fields) {
+        try {
+            JSONObject o = new JSONObject();
+            o.put("id", newId());
+            o.put("kind", "stage");
+            o.put("tripId", tripId);
+            for (java.util.Map.Entry<String, String> e : fields.entrySet()) {
+                if (e.getValue() != null && !e.getValue().isEmpty()) o.put(e.getKey(), e.getValue());
+            }
+            o.put("stage", stage);
+            if (!o.has("at")) o.put("at", Clock.nowIso());
+            push(o);
+            return o.getString("id");
+        } catch (Exception e) { return null; }
+    }
+
     public synchronized String addPunch(boolean in, double lat, double lng, int odo) {
         try {
             JSONObject o = new JSONObject();
@@ -109,7 +150,8 @@ public class SyncQueue {
                 boolean handled = false;
                 for (int j = 0; j < results.length(); j++) {
                     JSONObject r = results.getJSONObject(j);
-                    if (id.equals(r.optString("id"))) { handled = true; break; }
+                    // "retry" means the server hit a problem of its own - keep it and resend.
+                    if (id.equals(r.optString("id"))) { handled = !r.optBoolean("retry", false); break; }
                 }
                 if (!handled) keep.put(item);
             }
@@ -138,7 +180,10 @@ public class SyncQueue {
             JSONObject f = new JSONObject();
             for (java.util.Map.Entry<String, String> e : fields.entrySet()) f.put(e.getKey(), e.getValue());
             o.put("fields", f);
-            o.put("at", Clock.nowIso());
+            // The moment he pressed, not the moment the upload gave up - that can be over a
+            // minute later on a slow connection, and it is the press the TAT report measures.
+            String pressed = fields.get("at");
+            o.put("at", pressed != null && !pressed.isEmpty() ? pressed : Clock.nowIso());
 
             JSONArray arr = readPhotos();
             arr.put(o);
@@ -172,6 +217,46 @@ public class SyncQueue {
             }
             prefs.setPhotoQueue(keep.toString());
         } catch (Exception ignored) { }
+    }
+
+    /* ------------------------------------------------------------------ *
+     * What is still on the phone
+     * ------------------------------------------------------------------ */
+
+    /**
+     * Jobs he has finished on this phone whose "handed over" has not reached the server yet.
+     *
+     * Without this the home screen kept showing a delivered job at the top - the server still
+     * thought it was running - and the job he actually had to do next sat underneath it.
+     */
+    public synchronized java.util.Set<String> pendingFinished() {
+        java.util.Set<String> out = new java.util.HashSet<>();
+        try {
+            JSONArray a = read();
+            for (int i = 0; i < a.length(); i++) {
+                JSONObject o = a.getJSONObject(i);
+                if ("stage".equals(o.optString("kind")) && "COMPLETED".equals(o.optString("stage"))) {
+                    out.add(o.optString("tripId"));
+                }
+            }
+            JSONArray p = readPhotos();
+            for (int i = 0; i < p.length(); i++) {
+                JSONObject o = p.getJSONObject(i);
+                if ("COMPLETED".equals(o.optString("stage"))) out.add(o.optString("tripId"));
+            }
+        } catch (Exception ignored) { }
+        return out;
+    }
+
+    /** Time of the oldest waiting action, or null. ISO strings compare correctly as text. */
+    public synchronized String oldestActionAt() {
+        JSONArray a = read();
+        return a.length() == 0 ? null : a.optJSONObject(0).optString("at", "");
+    }
+
+    public synchronized String oldestPhotoAt() {
+        JSONArray a = readPhotos();
+        return a.length() == 0 ? null : a.optJSONObject(0).optString("at", "");
     }
 
     private static String newId() {

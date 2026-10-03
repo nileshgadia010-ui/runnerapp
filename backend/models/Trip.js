@@ -67,6 +67,18 @@ const tripSchema = new mongoose.Schema({
   arrivalPhoto: String,
   rejectReason: String,
   runnerNote: String,
+
+  // How the job was closed: 'APP' when the runner finished it on his phone, 'PORTAL' when
+  // somebody at the desk did it for him (dead phone, no signal, forgot to press). Shown on
+  // every screen that shows the job, so a portal close is never mistaken for a runner's.
+  closedVia: { type: String, enum: ['', 'APP', 'PORTAL'], default: '' },
+  closedByName: String,
+  deskNote: String,
+  // The job whose pickup this one was collected together with (same counter, one photo).
+  collectedWith: { type: mongoose.Schema.Types.ObjectId, ref: 'Trip' },
+  // Set when the desk later corrected the times or added a photo on a finished job.
+  amendedAt: Date,
+  amendedByName: String,
   distanceKm: { type: Number, default: 0 },
 
   // Ring control: the app clears this once the alarm has been shown
